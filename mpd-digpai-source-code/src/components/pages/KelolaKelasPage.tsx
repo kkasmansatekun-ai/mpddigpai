@@ -165,13 +165,16 @@ export const KelolaKelasPage: React.FC<KelolaKelasPageProps> = ({
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">Tahun Ajaran</label>
-                <input
-                  type="text"
+                <select
                   value={academicYearInput}
                   onChange={(e) => setAcademicYearInput(e.target.value)}
-                  placeholder="2025/2026"
-                  className="w-full p-3 rounded-xl border border-slate-300 text-xs outline-hidden"
-                />
+                  className="w-full p-3 rounded-xl border border-slate-300 text-xs bg-white outline-hidden cursor-pointer"
+                >
+                  <option value="2025/2026">2025/2026</option>
+                  <option value="2026/2027">2026/2027</option>
+                  <option value="2027/2028">2027/2028</option>
+                  <option value="2028/2029">2028/2029</option>
+                </select>
               </div>
 
               <div className="flex justify-end space-x-2 pt-2">

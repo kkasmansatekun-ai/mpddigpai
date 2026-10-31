@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, PrayerSchedule, SchoolClass } from '../types';
-import { Clock, ChevronDown, Sparkles, MapPin, Building2, Database, LogOut, User as UserIcon, ShieldCheck, GraduationCap } from 'lucide-react';
+import { Clock, ChevronDown, Sparkles, MapPin, Building2, Database, LogOut, User as UserIcon, ShieldCheck, GraduationCap, Flame, RefreshCw, CheckCircle2, Cloud } from 'lucide-react';
 
 interface HeaderTopbarProps {
   currentUser: User;
@@ -12,6 +12,8 @@ interface HeaderTopbarProps {
   onOpenLaravelCode: () => void;
   onOpenDatabaseBackup?: () => void;
   onLogout?: () => void;
+  firebaseStatus?: { connected: boolean; message: string; error?: string };
+  onSyncAllToFirestore?: () => Promise<{ success: boolean; count: number; error?: string }>;
 }
 
 export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
@@ -24,6 +26,8 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
   onOpenLaravelCode,
   onOpenDatabaseBackup,
   onLogout,
+  firebaseStatus,
+  onSyncAllToFirestore,
 }) => {
   const [timeStr, setTimeStr] = useState<string>('--:--:--');
   const [nextPrayerName, setNextPrayerName] = useState<string>('Dzuhur');
@@ -32,6 +36,9 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
   const [showScheduleDropdown, setShowScheduleDropdown] = useState<boolean>(false);
   const [showUserDropdown, setShowUserDropdown] = useState<boolean>(false);
   const [showClassDropdown, setShowClassDropdown] = useState<boolean>(false);
+  const [showFirebaseModal, setShowFirebaseModal] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   // Standard Prayer Times (WIB)
   const prayers: PrayerSchedule[] = [
@@ -232,6 +239,17 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
             </button>
           )}
 
+          {/* Firebase Cloud Firestore Status Button */}
+          <button
+            onClick={() => setShowFirebaseModal(true)}
+            className="text-[10px] font-mono font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 px-2 py-1 rounded-lg border border-amber-300 hover:border-amber-400 transition flex items-center space-x-1 shadow-2xs cursor-pointer"
+            title="Kelola Koneksi Firebase Firestore: mpd-digpai"
+          >
+            <Flame className="w-3 h-3 text-amber-600 animate-pulse" />
+            <span className="hidden sm:inline">Firebase:</span>
+            <span className="text-amber-700">mpd-digpai</span>
+          </button>
+
           {/* User Switcher Dropdown (Guru & Siswa) */}
           <div className="relative">
             <button
@@ -351,6 +369,111 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Firebase Cloud Firestore Modal */}
+      {showFirebaseModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-fade-in">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
+                  <Flame className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Google Firebase Firestore</h3>
+                  <p className="text-xs text-amber-100 font-mono">Proyek: mpd-digpai</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowFirebaseModal(false);
+                  setSyncFeedback(null);
+                }}
+                className="text-white/80 hover:text-white text-sm font-bold bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-xl transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4 text-xs text-slate-700">
+              {/* Connection Status Box */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-900 flex items-center space-x-1.5">
+                    <Cloud className="w-4 h-4 text-amber-600" />
+                    <span>Status Integrasi:</span>
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+                    Aktif Terhubung
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-600 space-y-0.5 bg-white p-2.5 rounded-xl border border-amber-100">
+                  <p><span className="text-slate-400">Project ID:</span> <strong>mpd-digpai</strong></p>
+                  <p><span className="text-slate-400">Auth Domain:</span> mpd-digpai.firebaseapp.com</p>
+                  <p><span className="text-slate-400">Storage Bucket:</span> mpd-digpai.firebasestorage.app</p>
+                  <p><span className="text-slate-400">Koleksi:</span> classes, students, student_progress</p>
+                </div>
+              </div>
+
+              {/* Sync Feedback Message */}
+              {syncFeedback && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{syncFeedback}</span>
+                </div>
+              )}
+
+              {/* One-Click Initial Data Upload */}
+              <div className="space-y-2">
+                <p className="font-bold text-slate-800">Sinkronisasi Data Awal ke Firestore:</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Jika database Firebase Anda di console masih kosong, klik tombol di bawah untuk mengunggah otomatis data <strong>Kelas X 3</strong>, <strong>36 Peserta Didik</strong>, dan <strong>Progres Awal</strong> langsung ke database Firestore Anda:
+                </p>
+
+                <button
+                  disabled={isSyncing}
+                  onClick={async () => {
+                    if (!onSyncAllToFirestore) return;
+                    setIsSyncing(true);
+                    setSyncFeedback(null);
+                    try {
+                      const res = await onSyncAllToFirestore();
+                      if (res.success) {
+                        setSyncFeedback(`Berhasil mengunggah ${res.count} data dokumen ke database Firestore mpd-digpai!`);
+                      } else {
+                        setSyncFeedback(`Catatan: ${res.error}`);
+                      }
+                    } catch (e: any) {
+                      setSyncFeedback(`Koneksi: ${e.message}`);
+                    } finally {
+                      setIsSyncing(false);
+                    }
+                  }}
+                  className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition shadow-sm ${
+                    isSyncing
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer hover:shadow'
+                  }`}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Sedang Mengunggah ke Firestore...' : 'Upload 36 Data Siswa & Kelas ke Firestore'}</span>
+                </button>
+              </div>
+
+              {/* Security Rules Tip */}
+              <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                <p className="font-semibold text-slate-700 mb-1">💡 Tips Firebase Console:</p>
+                <p className="leading-relaxed">
+                  Pastikan tab <strong>Rules</strong> di Cloud Firestore pada Firebase Console mengizinkan pembacaan & penulisan (file <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-700 font-mono">firestore.rules</code> sudah disediakan di root proyek).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

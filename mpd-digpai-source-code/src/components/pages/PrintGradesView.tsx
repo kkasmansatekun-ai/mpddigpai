@@ -15,6 +15,10 @@ export const PrintGradesView: React.FC<PrintGradesViewProps> = ({
   activeClass,
   onBack,
 }) => {
+  const classStudents = activeClass
+    ? students.filter((s) => (s.classId ? s.classId === activeClass.id : s.className === activeClass.name))
+    : students;
+
   const handlePrint = () => {
     window.print();
   };
@@ -93,7 +97,7 @@ export const PrintGradesView: React.FC<PrintGradesViewProps> = ({
             </tr>
           </thead>
           <tbody>
-            {students.map((s, index) => {
+            {classStudents.map((s, index) => {
               const p = progressList.find((prog) => prog.studentId === s.id) || {
                 diagnostikScore: 80,
                 formatifScore: 82,

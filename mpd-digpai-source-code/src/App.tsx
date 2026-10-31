@@ -1,8 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, LearningStyle, StudentProgress, SchoolClass } from './types';
 import { TEACHER_USER, INITIAL_STUDENTS, INITIAL_PROGRESS_DATA, INITIAL_CLASSES } from './data/studentsData';
 import { HeaderTopbar } from './components/HeaderTopbar';
 import { Sidebar, PageId } from './components/Sidebar';
+import {
+  getClassesFromFirestore,
+  getStudentsFromFirestore,
+  getProgressFromFirestore,
+  saveClassToFirestore,
+  deleteClassFromFirestore,
+  saveStudentToFirestore,
+  deleteStudentFromFirestore,
+  updateStudentPasswordInFirestore,
+  updateStudentLearningStyleInFirestore,
+  saveProgressToFirestore,
+  seedAllDataToFirestore,
+  FirebaseSyncStatus,
+} from './services/firebaseService';
 
 // 11 Core Pages, Auth & Specialized Panels
 import { LoginPage } from './components/pages/LoginPage';
@@ -24,30 +38,191 @@ import { PrintGradesView } from './components/pages/PrintGradesView';
 import { LaravelArchitecturePage } from './components/pages/LaravelArchitecturePage';
 import { DatabaseExportPage } from './components/pages/DatabaseExportPage';
 
-import { Menu } from 'lucide-react';
+import { Menu, Flame, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<User>(TEACHER_USER);
-  const [classes, setClasses] = useState<SchoolClass[]>(INITIAL_CLASSES);
-  const [activeClass, setActiveClass] = useState<SchoolClass>(INITIAL_CLASSES[0]);
-  const [students, setStudents] = useState<User[]>(INITIAL_STUDENTS);
-  const [progressList, setProgressList] = useState<StudentProgress[]>(INITIAL_PROGRESS_DATA);
+  // Session persistence across page reloads
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return !!localStorage.getItem('mpd_auth_user');
+  });
+
+  const [currentUser, setCurrentUser] = useState<User>(() => {
+    const saved = localStorage.getItem('mpd_auth_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return TEACHER_USER;
+  });
+
+  // Data persistence with localStorage + Firestore sync
+  const [classes, setClasses] = useState<SchoolClass[]>(() => {
+    const saved = localStorage.getItem('mpd_classes');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_CLASSES;
+  });
+
+  const [activeClass, setActiveClass] = useState<SchoolClass>(() => {
+    const savedClassId = localStorage.getItem('mpd_active_class_id');
+    const savedClasses = localStorage.getItem('mpd_classes');
+    if (savedClasses && savedClassId) {
+      try {
+        const parsed: SchoolClass[] = JSON.parse(savedClasses);
+        const found = parsed.find((c) => c.id === savedClassId);
+        if (found) return found;
+      } catch {}
+    }
+    return INITIAL_CLASSES[0];
+  });
+
+  const [students, setStudents] = useState<User[]>(() => {
+    const saved = localStorage.getItem('mpd_students');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_STUDENTS;
+  });
+
+  const [progressList, setProgressList] = useState<StudentProgress[]>(() => {
+    const saved = localStorage.getItem('mpd_progress');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_PROGRESS_DATA;
+  });
+
   const [activePage, setActivePage] = useState<PageId>('home');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [firebaseStatus, setFirebaseStatus] = useState<FirebaseSyncStatus>({
+    connected: true,
+    message: 'Terhubung ke Google Firebase Firestore (mpd-digpai)'
+  });
+  const [cloudToast, setCloudToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setCloudToast({ message, type });
+    setTimeout(() => {
+      setCloudToast((prev) => (prev?.message === message ? null : prev));
+    }, 3500);
+  };
+
+  // Load from Firestore on mount & merge with local data
+  useEffect(() => {
+    let isMounted = true;
+    const loadFromCloud = async () => {
+      try {
+        const [cloudClasses, cloudStudents, cloudProgress] = await Promise.all([
+          getClassesFromFirestore(),
+          getStudentsFromFirestore(),
+          getProgressFromFirestore()
+        ]);
+
+        if (isMounted) {
+          let hasCloudData = false;
+          if (cloudClasses && cloudClasses.length > 0) {
+            setClasses((prev) => {
+              const classMap = new Map<string, SchoolClass>();
+              cloudClasses.forEach((c) => classMap.set(c.id, c));
+              // Retain any locally added classes not yet in cloud
+              prev.forEach((c) => {
+                if (!classMap.has(c.id)) {
+                  classMap.set(c.id, c);
+                  saveClassToFirestore(c).catch(console.warn);
+                }
+              });
+              const merged = Array.from(classMap.values());
+              localStorage.setItem('mpd_classes', JSON.stringify(merged));
+              const savedActiveId = localStorage.getItem('mpd_active_class_id');
+              const found = merged.find((c) => c.id === savedActiveId);
+              setActiveClass(found || merged[0]);
+              return merged;
+            });
+            hasCloudData = true;
+          }
+          if (cloudStudents && cloudStudents.length > 0) {
+            setStudents((prev) => {
+              const studentMap = new Map<string, User>();
+              cloudStudents.forEach((s) => studentMap.set(s.id, s));
+              prev.forEach((s) => {
+                if (!studentMap.has(s.id)) {
+                  studentMap.set(s.id, s);
+                  saveStudentToFirestore(s).catch(console.warn);
+                }
+              });
+              const merged = Array.from(studentMap.values());
+              localStorage.setItem('mpd_students', JSON.stringify(merged));
+              return merged;
+            });
+            hasCloudData = true;
+          }
+          if (cloudProgress && cloudProgress.length > 0) {
+            setProgressList(cloudProgress);
+            localStorage.setItem('mpd_progress', JSON.stringify(cloudProgress));
+            hasCloudData = true;
+          }
+          setFirebaseStatus({
+            connected: true,
+            message: 'Terhubung ke Google Firebase Firestore (mpd-digpai)'
+          });
+          if (hasCloudData) {
+            showToast('Data berhasil disinkronkan dari Firebase Firestore', 'success');
+          }
+        }
+      } catch (e: any) {
+        console.warn('Firestore fallback to local:', e);
+        if (isMounted) {
+          setFirebaseStatus({
+            connected: false,
+            message: 'Menggunakan penyimpanan lokal',
+            error: e.message
+          });
+        }
+      }
+    };
+
+    loadFromCloud();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // One-click sync all initial data to Firestore
+  const handleSyncAllToFirestore = async () => {
+    return await seedAllDataToFirestore(classes, students, progressList);
+  };
+
+  // Class selection handler
+  const handleSelectClass = (cls: SchoolClass) => {
+    setActiveClass(cls);
+    localStorage.setItem('mpd_active_class_id', cls.id);
+  };
 
   // All users combined (Teacher + 36 Students)
   const allUsers: User[] = [TEACHER_USER, ...students];
 
-  // Login handler
+  // Login handler with session storage
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
+    localStorage.setItem('mpd_auth_user', JSON.stringify(user));
     setActivePage('home');
   };
 
   // Logout handler
   const handleLogout = () => {
+    localStorage.removeItem('mpd_auth_user');
     setIsAuthenticated(false);
   };
 
@@ -63,8 +238,8 @@ export default function App() {
     let targetStudentName = '';
     let targetUsername = '';
 
-    setStudents((prev) =>
-      prev.map((s) => {
+    setStudents((prev) => {
+      const updated = prev.map((s) => {
         if (s.id === studentId) {
           targetStudentName = s.name;
           targetUsername = s.username;
@@ -74,8 +249,15 @@ export default function App() {
           };
         }
         return s;
-      })
-    );
+      });
+      localStorage.setItem('mpd_students', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Save to Firestore asynchronously
+    updateStudentPasswordInFirestore(studentId, newPass)
+      .then(() => showToast(`Sandi akun ${targetStudentName} berhasil disimpan ke Firebase ✓`, 'success'))
+      .catch((err) => console.warn('Sync password to Firestore error:', err));
 
     return {
       studentName: targetStudentName,
@@ -86,16 +268,20 @@ export default function App() {
 
   // Quick edit learning style for a specific student directly from the table
   const handleUpdateStudentLearningStyle = (studentId: string, style: LearningStyle) => {
-    setStudents((prev) =>
-      prev.map((s) => (s.id === studentId ? { ...s, learningStyle: style } : s))
-    );
+    setStudents((prev) => {
+      const updated = prev.map((s) => (s.id === studentId ? { ...s, learningStyle: style } : s));
+      localStorage.setItem('mpd_students', JSON.stringify(updated));
+      return updated;
+    });
     if (currentUser.id === studentId) {
       setCurrentUser((prev) => ({ ...prev, learningStyle: style }));
     }
+    updateStudentLearningStyleInFirestore(studentId, style)
+      .then(() => showToast('Gaya belajar siswa berhasil diperbarui di Firebase ✓', 'success'))
+      .catch((err) => console.warn('Sync learning style to Firestore error:', err));
   };
 
   const handleAddStudent = (newStudent: User) => {
-    setStudents((prev) => [newStudent, ...prev]);
     const newProg: StudentProgress = {
       studentId: newStudent.id,
       studentName: newStudent.name,
@@ -111,32 +297,87 @@ export default function App() {
       submittedReflection: false,
       status: 'Tuntas',
     };
-    setProgressList((prev) => [newProg, ...prev]);
+
+    setStudents((prev) => {
+      const updated = [newStudent, ...prev];
+      localStorage.setItem('mpd_students', JSON.stringify(updated));
+      return updated;
+    });
+
+    setProgressList((prev) => {
+      const updated = [newProg, ...prev];
+      localStorage.setItem('mpd_progress', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Save to Firestore
+    Promise.all([saveStudentToFirestore(newStudent), saveProgressToFirestore(newProg)])
+      .then(() => showToast(`Siswa ${newStudent.name} berhasil disimpan ke database Firebase ✓`, 'success'))
+      .catch((err) => console.warn('Sync student to Firestore error:', err));
   };
 
   const handleDeleteStudent = (studentId: string) => {
-    setStudents((prev) => prev.filter((s) => s.id !== studentId));
-    setProgressList((prev) => prev.filter((p) => p.studentId !== studentId));
+    setStudents((prev) => {
+      const updated = prev.filter((s) => s.id !== studentId);
+      localStorage.setItem('mpd_students', JSON.stringify(updated));
+      return updated;
+    });
+    setProgressList((prev) => {
+      const updated = prev.filter((p) => p.studentId !== studentId);
+      localStorage.setItem('mpd_progress', JSON.stringify(updated));
+      return updated;
+    });
+
+    deleteStudentFromFirestore(studentId)
+      .then(() => showToast('Data siswa berhasil dihapus dari database Firebase', 'info'))
+      .catch((err) => console.warn('Delete student from Firestore error:', err));
   };
 
   const handleAddClass = (newCls: SchoolClass) => {
-    setClasses((prev) => [...prev, newCls]);
+    setClasses((prev) => {
+      const updated = [...prev, newCls];
+      localStorage.setItem('mpd_classes', JSON.stringify(updated));
+      return updated;
+    });
+    // Immediately select new class as active class!
+    setActiveClass(newCls);
+    localStorage.setItem('mpd_active_class_id', newCls.id);
+
+    saveClassToFirestore(newCls)
+      .then(() => showToast(`Kelas ${newCls.name} berhasil disimpan ke Firebase ✓`, 'success'))
+      .catch((err) => console.warn('Save class to Firestore error:', err));
   };
 
   const handleUpdateClass = (updatedCls: SchoolClass) => {
-    setClasses((prev) => prev.map((c) => (c.id === updatedCls.id ? updatedCls : c)));
+    setClasses((prev) => {
+      const updated = prev.map((c) => (c.id === updatedCls.id ? updatedCls : c));
+      localStorage.setItem('mpd_classes', JSON.stringify(updated));
+      return updated;
+    });
     if (activeClass.id === updatedCls.id) {
       setActiveClass(updatedCls);
+      localStorage.setItem('mpd_active_class_id', updatedCls.id);
     }
+    saveClassToFirestore(updatedCls)
+      .then(() => showToast(`Kelas ${updatedCls.name} berhasil diperbarui di Firebase ✓`, 'success'))
+      .catch((err) => console.warn('Update class in Firestore error:', err));
   };
 
   const handleDeleteClass = (classId: string) => {
     if (classes.length <= 1) return;
-    setClasses((prev) => prev.filter((c) => c.id !== classId));
+    setClasses((prev) => {
+      const updated = prev.filter((c) => c.id !== classId);
+      localStorage.setItem('mpd_classes', JSON.stringify(updated));
+      return updated;
+    });
     if (activeClass.id === classId) {
       const remaining = classes.filter((c) => c.id !== classId);
       setActiveClass(remaining[0]);
+      localStorage.setItem('mpd_active_class_id', remaining[0].id);
     }
+    deleteClassFromFirestore(classId)
+      .then(() => showToast('Kelas berhasil dihapus dari database Firebase', 'info'))
+      .catch((err) => console.warn('Delete class error:', err));
   };
 
   const handleUpdateLearningStyle = (style: LearningStyle) => {
@@ -144,6 +385,9 @@ export default function App() {
     if (currentUser.role === 'student') {
       setStudents((prev) =>
         prev.map((s) => (s.id === currentUser.id ? { ...s, learningStyle: style } : s))
+      );
+      updateStudentLearningStyleInFirestore(currentUser.id, style).catch((err) =>
+        console.warn('Update learning style in Firestore error:', err)
       );
     }
   };
@@ -165,13 +409,20 @@ export default function App() {
           else if (finalScore >= 68) grade = 'C+';
           else grade = 'C';
 
-          return {
+          const updatedProg: StudentProgress = {
             ...p,
             sumatifScore: score,
             finalScore,
             grade,
             status: finalScore >= 75 ? 'Tuntas' : 'Perlu Bimbingan',
           };
+
+          // Save to Firestore
+          saveProgressToFirestore(updatedProg).catch((err) =>
+            console.warn('Save summative score to Firestore error:', err)
+          );
+
+          return updatedProg;
         }
         return p;
       })
@@ -248,11 +499,13 @@ export default function App() {
           allUsers={allUsers}
           activeClass={activeClass}
           allClasses={classes}
-          onSelectClass={(cls) => setActiveClass(cls)}
+          onSelectClass={handleSelectClass}
           onSelectUser={(u) => setCurrentUser(u)}
           onOpenLaravelCode={() => setActivePage('laravel-code')}
           onOpenDatabaseBackup={() => setActivePage('database-backup')}
           onLogout={handleLogout}
+          firebaseStatus={firebaseStatus}
+          onSyncAllToFirestore={handleSyncAllToFirestore}
         />
 
         {/* PAGE CONTENT CONTAINER */}
@@ -262,7 +515,7 @@ export default function App() {
               classes={classes}
               activeClass={activeClass}
               students={students}
-              onSelectActiveClass={(cls) => setActiveClass(cls)}
+              onSelectActiveClass={handleSelectClass}
               onAddClass={handleAddClass}
               onUpdateClass={handleUpdateClass}
               onDeleteClass={handleDeleteClass}
@@ -326,6 +579,8 @@ export default function App() {
             <ManajemenSiswaPage
               students={students}
               activeClass={activeClass}
+              allClasses={classes}
+              onSelectClass={handleSelectClass}
               onResetPassword={handleResetPassword}
               onUpdateStudentLearningStyle={handleUpdateStudentLearningStyle}
               onAddStudent={handleAddStudent}
@@ -339,6 +594,20 @@ export default function App() {
           {activePage === 'laravel-code' && <LaravelArchitecturePage />}
         </main>
       </div>
+
+      {/* Floating Firebase Cloud Toast Notification */}
+      {cloudToast && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-2xl shadow-xl border bg-slate-900/95 backdrop-blur-md text-white border-amber-500/40 animate-fade-in">
+          <Flame className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+          <span className="text-xs font-medium text-slate-100">{cloudToast.message}</span>
+          <button
+            onClick={() => setCloudToast(null)}
+            className="text-slate-400 hover:text-white text-xs ml-2 cursor-pointer font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
