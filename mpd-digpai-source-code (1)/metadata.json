@@ -1,0 +1,6 @@
+{
+  "name": "MPD-DigPAI - Media Pembelajaran Digital PAI",
+  "description": "Media Pembelajaran Digital Pendidikan Agama Islam berfokus pada Adab Bersosial Media dalam Islam, diferensiasi gaya belajar, widget waktu sholat real-time, asesmen, dan panel guru.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
