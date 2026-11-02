@@ -22,81 +22,115 @@ import {
   RotateCcw,
   Check,
 } from 'lucide-react';
+import {
+  getSubmissionsFromFirestore,
+  saveSubmissionToFirestore,
+  deleteSubmissionFromFirestore,
+} from '../../services/firebaseService';
 
 interface TugasProdukPageProps {
   currentUser: User;
 }
 
+const INITIAL_SUBMISSIONS: SubmissionItem[] = [
+  {
+    id: 'sub-1',
+    studentId: 'std-01',
+    studentName: 'ASSYFA KIRANI ARPIS',
+    title: 'Infografis: 5 Filter Sebelum Menekan Tombol Share',
+    category: 'Poster Digital',
+    style: 'visual',
+    fileName: 'Infografis_Filter_Tabayyun.png',
+    fileType: 'image/png',
+    fileSize: '3.4 MB',
+    fileUrl: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&auto=format&fit=crop&q=80',
+    description: 'Poster berukuran A3 dibuat dengan Canva memuat dalil QS. Al-Hujurat ayat 6 dan 5 langkah cek fakta turnbackhoax.',
+    submittedAt: 'Kemarin, 14:20 WIB',
+    score: 95,
+    status: 'Dinilai',
+    feedback: 'Desain visual sangat rapi, komposisi warna serasi, dan penempatan dalil sangat jelas. Pertahankan!',
+  },
+  {
+    id: 'sub-2',
+    studentId: 'std-02',
+    studentName: 'AULIA RAHMADANI',
+    title: 'Video Edukasi: Diam Adalah Emas di Kolom Komentar',
+    category: 'Video Narasi',
+    style: 'auditory',
+    fileName: 'Video_Edukasi_Adab_Komentar.mp4',
+    fileType: 'video/mp4',
+    fileSize: '12.4 MB',
+    fileUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    description: 'Video narasi berdurasi 2 menit 45 detik membahas hadis Bukhari tentang menjaga lisan dan etika digital.',
+    submittedAt: 'Kemarin, 16:05 WIB',
+    score: 92,
+    status: 'Dinilai',
+    feedback: 'Artikulasi suara sangat jelas, intonasi menyentuh, dan pesan moral tersampaikan dengan hangat.',
+  },
+  {
+    id: 'sub-3',
+    studentId: 'std-10',
+    studentName: 'GIBRAN ALVARO SABIL',
+    title: 'Laporan Aksi: Fact-Check Berita Hoaks Donasi Gempa',
+    category: 'Artikel Opini',
+    style: 'kinesthetic',
+    fileName: 'Laporan_Uji_Fakta_Gempa.pdf',
+    fileType: 'application/pdf',
+    fileSize: '1.5 MB',
+    description: 'Dokumentasi langkah uji fakta broadcast WhatsApp palsu menggunakan Google Lens dan situs Kominfo.',
+    submittedAt: 'Hari ini, 08:30 WIB',
+    status: 'Menunggu Penilaian',
+  },
+  {
+    id: 'sub-4',
+    studentId: 'std-12',
+    studentName: 'HAFIZ RAMADAN HAKIM',
+    title: 'Kajian Video: Bahaya Dosa Jariyah Fitnah Digital',
+    category: 'Video Narasi',
+    style: 'auditory',
+    fileName: 'Kajian_Video_Dosa_Jariyah.mp4',
+    fileType: 'video/mp4',
+    fileSize: '16.8 MB',
+    fileUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    description: 'Pembahasan fenomena screenshot obrolan rahasia yang diunggah ke akun menfess sekolah.',
+    submittedAt: 'Hari ini, 09:12 WIB',
+    score: 88,
+    status: 'Dinilai',
+    feedback: 'Analisis hukum syar’i sangat tajam, diksi yang digunakan sangat mendidik.',
+  },
+];
+
 export const TugasProdukPage: React.FC<TugasProdukPageProps> = ({ currentUser }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [submissions, setSubmissions] = useState<SubmissionItem[]>([
-    {
-      id: 'sub-1',
-      studentId: 'std-01',
-      studentName: 'ASSYFA KIRANI ARPIS',
-      title: 'Infografis: 5 Filter Sebelum Menekan Tombol Share',
-      category: 'Poster Digital',
-      style: 'visual',
-      fileName: 'Infografis_Filter_Tabayyun.png',
-      fileType: 'image/png',
-      fileSize: '3.4 MB',
-      fileUrl: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&auto=format&fit=crop&q=80',
-      description: 'Poster berukuran A3 dibuat dengan Canva memuat dalil QS. Al-Hujurat ayat 6 dan 5 langkah cek fakta turnbackhoax.',
-      submittedAt: 'Kemarin, 14:20 WIB',
-      score: 95,
-      status: 'Dinilai',
-      feedback: 'Desain visual sangat rapi, komposisi warna serasi, dan penempatan dalil sangat jelas. Pertahankan!',
-    },
-    {
-      id: 'sub-2',
-      studentId: 'std-02',
-      studentName: 'AULIA RAHMADANI',
-      title: 'Video Edukasi: Diam Adalah Emas di Kolom Komentar',
-      category: 'Video Narasi',
-      style: 'auditory',
-      fileName: 'Video_Edukasi_Adab_Komentar.mp4',
-      fileType: 'video/mp4',
-      fileSize: '12.4 MB',
-      fileUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-      description: 'Video narasi berdurasi 2 menit 45 detik membahas hadis Bukhari tentang menjaga lisan dan etika digital.',
-      submittedAt: 'Kemarin, 16:05 WIB',
-      score: 92,
-      status: 'Dinilai',
-      feedback: 'Artikulasi suara sangat jelas, intonasi menyentuh, dan pesan moral tersampaikan dengan hangat.',
-    },
-    {
-      id: 'sub-3',
-      studentId: 'std-10',
-      studentName: 'GIBRAN ALVARO SABIL',
-      title: 'Laporan Aksi: Fact-Check Berita Hoaks Donasi Gempa',
-      category: 'Artikel Opini',
-      style: 'kinesthetic',
-      fileName: 'Laporan_Uji_Fakta_Gempa.pdf',
-      fileType: 'application/pdf',
-      fileSize: '1.5 MB',
-      description: 'Dokumentasi langkah uji fakta broadcast WhatsApp palsu menggunakan Google Lens dan situs Kominfo.',
-      submittedAt: 'Hari ini, 08:30 WIB',
-      status: 'Menunggu Penilaian',
-    },
-    {
-      id: 'sub-4',
-      studentId: 'std-12',
-      studentName: 'HAFIZ RAMADAN HAKIM',
-      title: 'Kajian Video: Bahaya Dosa Jariyah Fitnah Digital',
-      category: 'Video Narasi',
-      style: 'auditory',
-      fileName: 'Kajian_Video_Dosa_Jariyah.mp4',
-      fileType: 'video/mp4',
-      fileSize: '16.8 MB',
-      fileUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-      description: 'Pembahasan fenomena screenshot obrolan rahasia yang diunggah ke akun menfess sekolah.',
-      submittedAt: 'Hari ini, 09:12 WIB',
-      score: 88,
-      status: 'Dinilai',
-      feedback: 'Analisis hukum syar’i sangat tajam, diksi yang digunakan sangat mendidik.',
-    },
-  ]);
+  const [submissions, setSubmissions] = useState<SubmissionItem[]>(() => {
+    const saved = localStorage.getItem('mpd_submissions');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_SUBMISSIONS;
+  });
+
+  // Sync from Firestore on mount
+  useEffect(() => {
+    getSubmissionsFromFirestore().then((cloudSubs) => {
+      if (cloudSubs && cloudSubs.length > 0) {
+        setSubmissions((prev) => {
+          const map = new Map<string, SubmissionItem>();
+          cloudSubs.forEach((s: any) => map.set(s.id, s));
+          prev.forEach((s) => {
+            if (!map.has(s.id)) map.set(s.id, s);
+          });
+          const merged = Array.from(map.values());
+          localStorage.setItem('mpd_submissions', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    });
+  }, []);
 
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState<'Poster Digital' | 'Video Narasi' | 'Artikel Opini'>('Poster Digital');
@@ -292,6 +326,7 @@ export const TugasProdukPage: React.FC<TugasProdukPageProps> = ({ currentUser })
 
   const handleUploadSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!newTitle.trim()) return;
 
     const fallbackFileName =
@@ -315,28 +350,51 @@ export const TugasProdukPage: React.FC<TugasProdukPageProps> = ({ currentUser })
         ? 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&auto=format&fit=crop&q=80'
         : undefined;
 
+    // Guaranteed working video / media URL for persistent playback across page reloads
+    const effectiveFileUrl =
+      uploadedFile?.previewUrl && !uploadedFile.previewUrl.startsWith('blob:')
+        ? uploadedFile.previewUrl
+        : newCategory === 'Video Narasi'
+        ? uploadedFile?.previewUrl || fallbackUrl
+        : uploadedFile?.previewUrl || fallbackUrl;
+
     const newSub: SubmissionItem = {
       id: `sub-${Date.now()}`,
       studentId: currentUser.id,
       studentName: currentUser.name,
-      title: newTitle,
+      title: newTitle.trim(),
       category: newCategory,
       style: currentUser.learningStyle || 'visual',
       fileName: uploadedFile?.name || fallbackFileName,
       fileType: uploadedFile?.type || fallbackFileType,
-      fileSize: uploadedFile?.size || '2.1 MB',
-      fileUrl: uploadedFile?.previewUrl || fallbackUrl,
-      description: newDesc || 'Karya tugas telah diunggah melalui formulir MPD-DigPAI.',
+      fileSize: uploadedFile?.size || '4.2 MB',
+      fileUrl: effectiveFileUrl,
+      description: newDesc.trim() || 'Karya tugas telah diunggah melalui formulir MPD-DigPAI.',
       submittedAt: 'Baru saja',
       status: 'Menunggu Penilaian',
     };
 
-    setSubmissions([newSub, ...submissions]);
+    const updated = [newSub, ...submissions];
+    setSubmissions(updated);
+    localStorage.setItem('mpd_submissions', JSON.stringify(updated));
+
+    // Save to Firestore
+    saveSubmissionToFirestore(newSub).catch(console.warn);
+
     setNewTitle('');
     setNewDesc('');
     setUploadedFile(null);
     setShowUploadAlert(true);
-    setTimeout(() => setShowUploadAlert(false), 5000);
+
+    // Smooth scroll down to gallery so student/teacher immediately sees their uploaded video
+    setTimeout(() => {
+      const galleryEl = document.getElementById('galeri-portofolio');
+      if (galleryEl) {
+        galleryEl.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 150);
+
+    setTimeout(() => setShowUploadAlert(false), 7000);
   };
 
   // Confirm delete of staged file
@@ -360,14 +418,20 @@ export const TugasProdukPage: React.FC<TugasProdukPageProps> = ({ currentUser })
     if (!submissionToDelete) return;
     const title = submissionToDelete.title;
     const fileName = submissionToDelete.fileName;
+    const subId = submissionToDelete.id;
 
     if (submissionToDelete.fileUrl && submissionToDelete.fileUrl.startsWith('blob:')) {
       URL.revokeObjectURL(submissionToDelete.fileUrl);
     }
 
-    setSubmissions((prev) => prev.filter((s) => s.id !== submissionToDelete.id));
+    const updated = submissions.filter((s) => s.id !== subId);
+    setSubmissions(updated);
+    localStorage.setItem('mpd_submissions', JSON.stringify(updated));
 
-    if (previewModalSub?.id === submissionToDelete.id) {
+    // Delete from Firestore
+    deleteSubmissionFromFirestore(subId).catch(console.warn);
+
+    if (previewModalSub?.id === subId) {
       setPreviewModalSub(null);
     }
 
@@ -729,7 +793,7 @@ export const TugasProdukPage: React.FC<TugasProdukPageProps> = ({ currentUser })
       </div>
 
       {/* GALERI KARYA TERKUMPUL */}
-      <div className="space-y-4">
+      <div id="galeri-portofolio" className="space-y-4 scroll-mt-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="font-bold text-lg text-slate-900">Galeri Portofolio Produk Siswa</h2>

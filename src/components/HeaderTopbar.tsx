@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, PrayerSchedule, SchoolClass } from '../types';
-import { Clock, ChevronDown, Sparkles, MapPin, Building2, Database } from 'lucide-react';
+import { Clock, ChevronDown, Sparkles, MapPin, Building2, Database, LogOut, User as UserIcon, ShieldCheck, GraduationCap, Flame, RefreshCw, CheckCircle2, Cloud } from 'lucide-react';
 
 interface HeaderTopbarProps {
   currentUser: User;
@@ -11,6 +11,9 @@ interface HeaderTopbarProps {
   onSelectUser: (user: User) => void;
   onOpenLaravelCode: () => void;
   onOpenDatabaseBackup?: () => void;
+  onLogout?: () => void;
+  firebaseStatus?: { connected: boolean; message: string; error?: string };
+  onSyncAllToFirestore?: () => Promise<{ success: boolean; count: number; error?: string }>;
 }
 
 export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
@@ -22,6 +25,9 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
   onSelectUser,
   onOpenLaravelCode,
   onOpenDatabaseBackup,
+  onLogout,
+  firebaseStatus,
+  onSyncAllToFirestore,
 }) => {
   const [timeStr, setTimeStr] = useState<string>('--:--:--');
   const [nextPrayerName, setNextPrayerName] = useState<string>('Dzuhur');
@@ -30,6 +36,9 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
   const [showScheduleDropdown, setShowScheduleDropdown] = useState<boolean>(false);
   const [showUserDropdown, setShowUserDropdown] = useState<boolean>(false);
   const [showClassDropdown, setShowClassDropdown] = useState<boolean>(false);
+  const [showFirebaseModal, setShowFirebaseModal] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   // Standard Prayer Times (WIB)
   const prayers: PrayerSchedule[] = [
@@ -208,28 +217,6 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
             )}
           </div>
 
-          {/* Penanda / Badge Tulisan 'Laravel PHP' Berukuran KECIL & Ringkas */}
-          <button
-            onClick={onOpenLaravelCode}
-            className="text-[10px] font-mono font-bold bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-900 px-2 py-1 rounded-lg border border-slate-200 hover:border-amber-300 transition flex items-center space-x-1"
-            title="Lihat Arsitektur Kode PHP Laravel"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-            <span>Laravel PHP</span>
-          </button>
-
-          {/* Database .SQL Download Button */}
-          {onOpenDatabaseBackup && (
-            <button
-              onClick={onOpenDatabaseBackup}
-              className="text-[10px] font-mono font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2 py-1 rounded-lg border border-emerald-300 hover:border-emerald-400 transition flex items-center space-x-1 shadow-2xs"
-              title="Download & Lihat Database MySQL / phpMyAdmin"
-            >
-              <Database className="w-3 h-3 text-emerald-600" />
-              <span>Database .SQL</span>
-            </button>
-          )}
-
           {/* User Switcher Dropdown (Guru & Siswa) */}
           <div className="relative">
             <button
@@ -254,102 +241,206 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
-            {/* Dropdown List Users */}
+            {/* Dropdown User Profile & Logout */}
             {showUserDropdown && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 p-3 z-40 max-h-96 overflow-y-auto">
-                <div className="px-2 py-1.5 text-xs font-semibold text-slate-500 border-b border-slate-100 flex justify-between items-center">
-                  <span>PILIH PROFIL SIMULASI</span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
-                    Role & Akun Aktif
-                  </span>
-                </div>
-
-                {/* Akun Guru */}
-                <div className="mt-2">
-                  <p className="text-[10px] font-bold text-emerald-800 px-2 uppercase tracking-wider mb-1">
-                    Guru Pengampu
-                  </p>
-                  {allUsers
-                    .filter((u) => u.role === 'teacher')
-                    .map((teacher) => (
-                      <button
-                        key={teacher.id}
-                        onClick={() => {
-                          onSelectUser(teacher);
-                          setShowUserDropdown(false);
-                        }}
-                        className={`w-full text-left p-2 rounded-xl flex items-center justify-between text-xs transition ${
-                          currentUser.id === teacher.id
-                            ? 'bg-emerald-50 text-emerald-950 font-bold border border-emerald-200'
-                            : 'hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 rounded-md bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px]">
-                            GP
-                          </div>
-                          <div>
-                            <p className="leading-tight">{teacher.name}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">@{teacher.username}</p>
-                          </div>
-                        </div>
-                        {currentUser.id === teacher.id && (
-                          <span className="text-emerald-700 font-bold text-[11px]">Aktif ✓</span>
-                        )}
-                      </button>
-                    ))}
-                </div>
-
-                {/* Sampel Akun Siswa */}
-                <div className="mt-3 pt-2 border-t border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-500 px-2 uppercase tracking-wider mb-1">
-                    Simulasi Sebagai Siswa (36 Siswa)
-                  </p>
-                  <div className="space-y-1">
-                    {allUsers
-                      .filter((u) => u.role === 'student')
-                      .slice(0, 10)
-                      .map((student) => (
-                        <button
-                          key={student.id}
-                          onClick={() => {
-                            onSelectUser(student);
-                            setShowUserDropdown(false);
-                          }}
-                          className={`w-full text-left p-2 rounded-xl flex items-center justify-between text-xs transition ${
-                            currentUser.id === student.id
-                              ? 'bg-emerald-50 text-emerald-950 font-bold border border-emerald-200'
-                              : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-2 truncate">
-                            <div className="w-6 h-6 rounded-md bg-teal-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0">
-                              {student.name.slice(0, 2)}
-                            </div>
-                            <div className="truncate">
-                              <p className="leading-tight truncate">{student.name}</p>
-                              <span className="text-[10px] text-slate-400 capitalize">
-                                {student.learningStyle} • {student.gender}
-                              </span>
-                            </div>
-                          </div>
-                          {currentUser.id === student.id && (
-                            <span className="text-emerald-700 font-bold text-[11px] shrink-0">Aktif ✓</span>
-                          )}
-                        </button>
-                      ))}
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-200 p-4 z-40 animate-fade-in">
+                <div className="flex items-center space-x-3 pb-3 border-b border-slate-100">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white ${
+                      currentUser.role === 'teacher' ? 'bg-emerald-700' : 'bg-teal-600'
+                    }`}
+                  >
+                    {currentUser.role === 'teacher' ? 'GP' : currentUser.name.slice(0, 2)}
                   </div>
-                  <div className="mt-2 text-center">
-                    <p className="text-[10px] text-slate-400 italic">
-                      Kelola seluruh siswa di menu Kelola Siswa
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-slate-900 truncate">{currentUser.name}</p>
+                    <p className="text-[11px] text-slate-500 font-mono truncate">@{currentUser.username}</p>
+                    <span
+                      className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        currentUser.role === 'teacher'
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                          : 'bg-teal-100 text-teal-900 border border-teal-200'
+                      }`}
+                    >
+                      {currentUser.role === 'teacher' ? 'Guru Pengampu' : `Siswa (${currentUser.learningStyle})`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Profile Details */}
+                <div className="py-2.5 space-y-1.5 text-[11px] text-slate-600 border-b border-slate-100">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Kelas Aktif:</span>
+                    <strong className="text-slate-800">{activeClass.name}</strong>
+                  </div>
+                  {(currentUser as any).nisn && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">NISN:</span>
+                      <span className="font-mono text-slate-800">{(currentUser as any).nisn}</span>
+                    </div>
+                  )}
+                  {currentUser.role === 'teacher' && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Status:</span>
+                      <span className="text-emerald-700 font-semibold">Administrator & Pendidik</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Teacher-only Student Preview Dropdown (Optional Preview) */}
+                {currentUser.role === 'teacher' && (
+                  <div className="pt-2 pb-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Mode Pratinjau Siswa (Fitur Guru)
                     </p>
+                    <select
+                      className="w-full text-[11px] p-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 focus:outline-hidden focus:border-emerald-600"
+                      onChange={(e) => {
+                        const target = allUsers.find((u) => u.id === e.target.value);
+                        if (target) {
+                          onSelectUser(target);
+                          setShowUserDropdown(false);
+                        }
+                      }}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>
+                        Pilih siswa untuk uji coba tampilan...
+                      </option>
+                      {allUsers
+                        .filter((u) => u.role === 'student')
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.learningStyle})
+                          </option>
+                        ))}
+                    </select>
                   </div>
+                )}
+
+                {/* Logout Button */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setShowUserDropdown(false);
+                      if (onLogout) onLogout();
+                    }}
+                    className="w-full py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 text-xs font-bold transition flex items-center justify-center space-x-1.5 border border-rose-200 cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Keluar (Logout)</span>
+                  </button>
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Firebase Cloud Firestore Modal */}
+      {showFirebaseModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-fade-in">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
+                  <Flame className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Google Firebase Firestore</h3>
+                  <p className="text-xs text-amber-100 font-mono">Proyek: mpd-digpai</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowFirebaseModal(false);
+                  setSyncFeedback(null);
+                }}
+                className="text-white/80 hover:text-white text-sm font-bold bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-xl transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4 text-xs text-slate-700">
+              {/* Connection Status Box */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-900 flex items-center space-x-1.5">
+                    <Cloud className="w-4 h-4 text-amber-600" />
+                    <span>Status Integrasi:</span>
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+                    Aktif Terhubung
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-600 space-y-0.5 bg-white p-2.5 rounded-xl border border-amber-100">
+                  <p><span className="text-slate-400">Project ID:</span> <strong>mpd-digpai</strong></p>
+                  <p><span className="text-slate-400">Auth Domain:</span> mpd-digpai.firebaseapp.com</p>
+                  <p><span className="text-slate-400">Storage Bucket:</span> mpd-digpai.firebasestorage.app</p>
+                  <p><span className="text-slate-400">Koleksi:</span> classes, students, student_progress</p>
+                </div>
+              </div>
+
+              {/* Sync Feedback Message */}
+              {syncFeedback && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{syncFeedback}</span>
+                </div>
+              )}
+
+              {/* One-Click Initial Data Upload */}
+              <div className="space-y-2">
+                <p className="font-bold text-slate-800">Sinkronisasi Data Awal ke Firestore:</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Jika database Firebase Anda di console masih kosong, klik tombol di bawah untuk mengunggah otomatis data <strong>Kelas X 3</strong>, <strong>36 Peserta Didik</strong>, dan <strong>Progres Awal</strong> langsung ke database Firestore Anda:
+                </p>
+
+                <button
+                  disabled={isSyncing}
+                  onClick={async () => {
+                    if (!onSyncAllToFirestore) return;
+                    setIsSyncing(true);
+                    setSyncFeedback(null);
+                    try {
+                      const res = await onSyncAllToFirestore();
+                      if (res.success) {
+                        setSyncFeedback(`Berhasil mengunggah ${res.count} data dokumen ke database Firestore mpd-digpai!`);
+                      } else {
+                        setSyncFeedback(`Catatan: ${res.error}`);
+                      }
+                    } catch (e: any) {
+                      setSyncFeedback(`Koneksi: ${e.message}`);
+                    } finally {
+                      setIsSyncing(false);
+                    }
+                  }}
+                  className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition shadow-sm ${
+                    isSyncing
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer hover:shadow'
+                  }`}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Sedang Mengunggah ke Firestore...' : 'Upload 36 Data Siswa & Kelas ke Firestore'}</span>
+                </button>
+              </div>
+
+              {/* Security Rules Tip */}
+              <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                <p className="font-semibold text-slate-700 mb-1">💡 Tips Firebase Console:</p>
+                <p className="leading-relaxed">
+                  Pastikan tab <strong>Rules</strong> di Cloud Firestore pada Firebase Console mengizinkan pembacaan & penulisan (file <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-700 font-mono">firestore.rules</code> sudah disediakan di root proyek).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

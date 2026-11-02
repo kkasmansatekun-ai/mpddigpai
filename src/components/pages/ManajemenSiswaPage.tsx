@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, LearningStyle, SchoolClass } from '../../types';
 import {
   Users,
@@ -18,11 +18,14 @@ import {
   Sparkles,
   Check,
   Database,
+  Building2,
 } from 'lucide-react';
 
 interface ManajemenSiswaPageProps {
   students: User[];
   activeClass?: SchoolClass;
+  allClasses?: SchoolClass[];
+  onSelectClass?: (cls: SchoolClass) => void;
   onResetPassword: (studentId: string) => { studentName: string; username: string; newPass: string };
   onUpdateStudentLearningStyle: (studentId: string, style: LearningStyle) => void;
   onAddStudent: (newStudent: User) => void;
@@ -35,6 +38,8 @@ interface ManajemenSiswaPageProps {
 export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
   students,
   activeClass,
+  allClasses = [],
+  onSelectClass,
   onResetPassword,
   onUpdateStudentLearningStyle,
   onAddStudent,
@@ -59,12 +64,35 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentGender, setNewStudentGender] = useState<'Laki-laki' | 'Perempuan'>('Perempuan');
   const [newStudentStyle, setNewStudentStyle] = useState<LearningStyle>('visual');
+  const [selectedAddClassId, setSelectedAddClassId] = useState<string>(
+    activeClass?.id || (allClasses[0]?.id) || 'cls-x3'
+  );
+
+  // Sync selectedAddClassId when activeClass changes
+  useEffect(() => {
+    if (activeClass?.id) {
+      setSelectedAddClassId(activeClass.id);
+    }
+  }, [activeClass?.id]);
+
+  // Filter students belonging strictly to the active class
+  const classStudents = activeClass
+    ? students.filter((s) => {
+        if (s.classId) {
+          return s.classId === activeClass.id;
+        }
+        if (s.className && activeClass.name) {
+          return s.className.trim().toUpperCase() === activeClass.name.trim().toUpperCase();
+        }
+        return false;
+      })
+    : students;
 
   // Distribution calculations
-  const totalStudents = students.length;
-  const visualCount = students.filter((s) => s.learningStyle === 'visual').length;
-  const auditoryCount = students.filter((s) => s.learningStyle === 'auditory').length;
-  const kinestheticCount = students.filter((s) => s.learningStyle === 'kinesthetic').length;
+  const totalStudents = classStudents.length;
+  const visualCount = classStudents.filter((s) => s.learningStyle === 'visual').length;
+  const auditoryCount = classStudents.filter((s) => s.learningStyle === 'auditory').length;
+  const kinestheticCount = classStudents.filter((s) => s.learningStyle === 'kinesthetic').length;
 
   const visualPct = totalStudents ? Math.round((visualCount / totalStudents) * 100) : 0;
   const auditoryPct = totalStudents ? Math.round((auditoryCount / totalStudents) * 100) : 0;
@@ -96,6 +124,11 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
     const username = `${parts[0]}.${parts[1] || 'pai'}`;
     const initialPassword = `Siswa#${Math.floor(1000 + Math.random() * 9000)}`;
 
+    const targetClass: SchoolClass | undefined =
+      allClasses.find((c) => c.id === selectedAddClassId) ||
+      activeClass ||
+      (allClasses.length > 0 ? allClasses[0] : undefined);
+
     const newStudent: User = {
       id: `std-${Date.now()}`,
       name: newStudentName.toUpperCase(),
@@ -105,7 +138,8 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
       gender: newStudentGender,
       initialPassword,
       learningStyle: newStudentStyle,
-      className: activeClass ? activeClass.name : 'KELAS X 3',
+      classId: targetClass ? targetClass.id : (activeClass ? activeClass.id : 'cls-x3'),
+      className: targetClass ? targetClass.name : (activeClass ? activeClass.name : 'KELAS X 3'),
       nisn: `006819${Math.floor(1000 + Math.random() * 9000)}`,
     };
 
@@ -114,10 +148,11 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
     setNewStudentName('');
   };
 
-  const filteredStudents = students.filter((s) => {
+  const filteredStudents = classStudents.filter((s) => {
     const matchName =
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.username.toLowerCase().includes(searchQuery.toLowerCase());
+      s.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.nisn && s.nisn.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchStyle = filterStyle === 'all' || s.learningStyle === filterStyle;
     return matchName && matchStyle;
   });
@@ -188,7 +223,7 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-base text-slate-900 flex items-center space-x-2">
                 <Plus className="w-4 h-4 text-emerald-600" />
-                <span>Tambah Siswa (KELAS X 3)</span>
+                <span>Tambah Siswa ({activeClass ? activeClass.name : 'Kelas'})</span>
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -221,6 +256,33 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
                   <option value="Perempuan">Perempuan</option>
                   <option value="Laki-laki">Laki-laki</option>
                 </select>
+              </div>
+
+              {/* Opsi Pilih Kelas Tepat Diatas Gaya Belajar Awal */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Pilih Kelas / Rombel Siswa</span>
+                </label>
+                <select
+                  value={selectedAddClassId}
+                  onChange={(e) => setSelectedAddClassId(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden font-bold text-slate-800 cursor-pointer"
+                >
+                  {(allClasses && allClasses.length > 0
+                    ? allClasses
+                    : activeClass
+                    ? [activeClass]
+                    : []
+                  ).map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name} ({cls.phase})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400">
+                  Siswa baru akan otomatis terdaftar dan dikelompokkan ke dalam kelas yang dipilih ini.
+                </p>
               </div>
 
               <div className="space-y-1">
@@ -265,7 +327,7 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-            Manajemen {students.length} Siswa & Kredensial
+            Manajemen {classStudents.length} Siswa & Kredensial • {activeClass ? activeClass.name : 'Kelas Aktif'}
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             Kelola data siswa, edit profil gaya belajar langsung, reset password, dan cetak dokumen resmi.
@@ -302,6 +364,60 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
           )}
         </div>
       </div>
+
+      {/* BAR PILIH KELAS AKTIF (Sinkron dengan Tombol Header & Seluruh Aplikasi) */}
+      {allClasses && allClasses.length > 0 && (
+        <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-800 shrink-0">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900">
+                Pilih Kelas yang Ingin Ditampilkan:
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Data siswa dan rekap di bawah otomatis hanya menampilkan murid yang terdaftar di kelas aktif terpilih.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {allClasses.map((cls) => {
+              const isSelected = activeClass?.id === cls.id;
+              const countInClass = students.filter((s) => {
+                if (s.classId) return s.classId === cls.id;
+                if (s.className && cls.name) return s.className.trim().toUpperCase() === cls.name.trim().toUpperCase();
+                return false;
+              }).length;
+
+              return (
+                <button
+                  key={cls.id}
+                  onClick={() => onSelectClass && onSelectClass(cls)}
+                  className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+                    isSelected
+                      ? 'bg-emerald-700 text-white shadow-md shadow-emerald-900/20 ring-2 ring-emerald-500/30'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
+                  title={`Klik untuk menampilkan hanya siswa ${cls.name}`}
+                >
+                  <span>{cls.name}</span>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                      isSelected
+                        ? 'bg-emerald-900 text-emerald-200'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {countInClass} siswa
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* STAT CARDS & DIAGRAM DONUT VISUAL */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -470,7 +586,7 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="font-bold text-base text-slate-900">
-              Daftar Siswa KELAS X 3 ({filteredStudents.length} Peserta Didik)
+              Daftar Siswa {activeClass ? activeClass.name : 'Kelas Aktif'} ({classStudents.length} Peserta Didik)
             </h3>
             <p className="text-xs text-slate-400">
               Ubah gaya belajar siswa langsung di tabel & reset password dengan modal transparan
@@ -558,6 +674,28 @@ export const ManajemenSiswaPage: React.FC<ManajemenSiswaPageProps> = ({
                   </td>
                 </tr>
               ))}
+
+              {filteredStudents.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-10 text-center text-slate-500 bg-slate-50/50">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <p className="font-bold text-slate-800 text-sm">
+                        {searchQuery
+                          ? 'Tidak ada peserta didik yang sesuai pencarian'
+                          : `Belum ada peserta didik di ${activeClass ? activeClass.name : 'kelas ini'}`}
+                      </p>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        {searchQuery
+                          ? 'Silakan periksa kembali ejaan nama atau kata kunci filter Anda.'
+                          : `Kelas ini dalam keadaan kosong (0 siswa). Klik tombol "+ Tambah Siswa" di kanan atas untuk mendaftarkan peserta didik pertama ke ${activeClass ? activeClass.name : 'kelas ini'}.`}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

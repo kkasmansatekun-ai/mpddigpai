@@ -15,6 +15,10 @@ export const PrintAccountsView: React.FC<PrintAccountsViewProps> = ({
 }) => {
   const [layoutMode, setLayoutMode] = useState<'table' | 'cards'>('cards');
 
+  const classStudents = activeClass
+    ? students.filter((s) => (s.classId ? s.classId === activeClass.id : s.className === activeClass.name))
+    : students;
+
   const handlePrint = () => {
     window.print();
   };
@@ -102,14 +106,14 @@ export const PrintAccountsView: React.FC<PrintAccountsViewProps> = ({
           </div>
           <div className="text-right">
             <p><strong>Tanggal Cetak:</strong> 12 Oktober 2026</p>
-            <p><strong>Jumlah Siswa:</strong> {students.length} Peserta Didik</p>
+            <p><strong>Jumlah Siswa:</strong> {classStudents.length} Peserta Didik</p>
           </div>
         </div>
 
         {/* KONTEN UTAMA: KARTU POTONG ATAU TABEL REKAP */}
         {layoutMode === 'cards' ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 print:grid-cols-3 print:gap-2">
-            {students.map((s, index) => (
+            {classStudents.map((s, index) => (
               <div
                 key={s.id}
                 className="border-2 border-dashed border-slate-400 p-3 rounded-xl bg-slate-50/50 print:bg-white print-break-inside-avoid relative flex flex-col justify-between"
@@ -166,7 +170,7 @@ export const PrintAccountsView: React.FC<PrintAccountsViewProps> = ({
               </tr>
             </thead>
             <tbody>
-              {students.map((s, index) => (
+              {classStudents.map((s, index) => (
                 <tr key={s.id} className="print-break-inside-avoid">
                   <td className="border border-slate-400 p-1.5 text-center font-mono">{index + 1}</td>
                   <td className="border border-slate-400 p-1.5 font-bold uppercase">{s.name}</td>

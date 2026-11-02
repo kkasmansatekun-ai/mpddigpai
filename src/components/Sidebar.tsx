@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   GraduationCap,
   Database,
+  Flame,
 } from 'lucide-react';
 import { User, SchoolClass } from '../types';
 
@@ -41,7 +42,11 @@ export type PageId =
   | 'progress'
   | 'print-accounts'
   | 'print-grades'
-  | 'laravel-code';
+  | 'laravel-code'
+  | 'kode'
+  | 'kode-laravel'
+  | 'kode-sql'
+  | 'kode-firebase';
 
 interface SidebarProps {
   activePage: PageId;
@@ -265,27 +270,75 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
 
-            <button
-              onClick={() => handleItemClick('laravel-code')}
-              title={isCollapsed ? 'Kode Laravel PHP' : undefined}
-              className={`w-full flex items-center ${
-                isCollapsed ? 'justify-center py-2.5 px-0' : 'justify-between px-3 py-2'
-              } rounded-xl text-left transition-all ${
-                activePage === 'laravel-code'
-                  ? 'bg-amber-600 text-white font-bold'
-                  : 'bg-emerald-900/40 text-amber-200 hover:bg-amber-950/60'
-              }`}
-            >
-              <div className="flex items-center space-x-2.5">
-                <Code2 className="w-4 h-4 text-amber-300" />
-                {!isCollapsed && <span className="font-semibold">Kode Laravel PHP</span>}
-              </div>
+            {/* MENU KODE DENGAN 3 SUB-TOMBOL */}
+            <div className="space-y-1">
+              <button
+                onClick={() => handleItemClick('kode')}
+                title={isCollapsed ? 'Kode' : undefined}
+                className={`w-full flex items-center ${
+                  isCollapsed ? 'justify-center py-2.5 px-0' : 'justify-between px-3 py-2'
+                } rounded-xl text-left transition-all ${
+                  activePage === 'kode' ||
+                  activePage === 'kode-laravel' ||
+                  activePage === 'kode-sql' ||
+                  activePage === 'kode-firebase' ||
+                  activePage === 'laravel-code'
+                    ? 'bg-amber-600 text-white font-bold'
+                    : 'bg-emerald-900/40 text-amber-200 hover:bg-amber-950/60'
+                }`}
+              >
+                <div className="flex items-center space-x-2.5">
+                  <Code2 className="w-4 h-4 text-amber-300" />
+                  {!isCollapsed && <span className="font-semibold">Kode</span>}
+                </div>
+                {!isCollapsed && (
+                  <span className="text-[9px] bg-amber-400/20 text-amber-200 px-1.5 py-0.5 rounded font-mono font-bold">
+                    3 Menu
+                  </span>
+                )}
+              </button>
+
+              {/* 3 SUB-TOMBOL DI DALAM MENU KODE */}
               {!isCollapsed && (
-                <span className="text-[10px] bg-amber-400/20 text-amber-200 px-1.5 py-0.5 rounded">
-                  12 File
-                </span>
+                <div className="pl-3 pr-1 py-1 space-y-1 border-l-2 border-amber-500/40 ml-4">
+                  <button
+                    onClick={() => handleItemClick('kode-laravel')}
+                    className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-[11px] transition text-left ${
+                      activePage === 'kode-laravel' || activePage === 'laravel-code'
+                        ? 'bg-amber-500/30 text-amber-100 font-bold border border-amber-400/40'
+                        : 'text-amber-200/80 hover:bg-emerald-900/60 hover:text-white'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></span>
+                    <span className="truncate">Laravel PHP</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleItemClick('kode-sql')}
+                    className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-[11px] transition text-left ${
+                      activePage === 'kode-sql'
+                        ? 'bg-emerald-700/60 text-white font-bold border border-emerald-400/40'
+                        : 'text-emerald-200/80 hover:bg-emerald-900/60 hover:text-white'
+                    }`}
+                  >
+                    <Database className="w-3 h-3 text-emerald-300 shrink-0" />
+                    <span className="truncate">Database .SQL</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleItemClick('kode-firebase')}
+                    className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-[11px] transition text-left ${
+                      activePage === 'kode-firebase'
+                        ? 'bg-amber-500/30 text-amber-100 font-bold border border-amber-400/40'
+                        : 'text-amber-200/80 hover:bg-emerald-900/60 hover:text-white'
+                    }`}
+                  >
+                    <Flame className="w-3 h-3 text-amber-400 shrink-0" />
+                    <span className="truncate">Firebase : mpd-digpai</span>
+                  </button>
+                </div>
               )}
-            </button>
+            </div>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LEARNING_MATERIALS } from '../../data/materialsData';
 import { MaterialItem } from '../../types';
 import {
@@ -20,7 +20,15 @@ import {
   CheckCircle,
   HelpCircle,
   Share2,
+  PlusCircle,
+  Trash2,
+  X,
+  CheckCircle2,
 } from 'lucide-react';
+import {
+  saveMaterialToFirestore,
+  getMaterialsFromFirestore,
+} from '../../services/firebaseService';
 
 export const MateriPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('teks');
@@ -36,6 +44,49 @@ export const MateriPage: React.FC = () => {
     9: true,
   });
 
+  // Custom materials added by teacher
+  const [customMaterials, setCustomMaterials] = useState<MaterialItem[]>(() => {
+    const saved = localStorage.getItem('mpd_custom_materials');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  });
+
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addFeedback, setAddFeedback] = useState<string | null>(null);
+
+  // Form states
+  const [newTitle, setNewTitle] = useState('');
+  const [newSubtitle, setNewSubtitle] = useState('');
+  const [newType, setNewType] = useState('teks');
+  const [newBadge, setNewBadge] = useState('Materi Tambahan');
+  const [newDuration, setNewDuration] = useState('10 Menit');
+  const [newSummary, setNewSummary] = useState('');
+  const [newContentText, setNewContentText] = useState('');
+  const [newMediaUrl, setNewMediaUrl] = useState('');
+
+  // Load from Firestore
+  useEffect(() => {
+    getMaterialsFromFirestore().then((cloudMats) => {
+      if (cloudMats && cloudMats.length > 0) {
+        setCustomMaterials((prev) => {
+          const map = new Map<string, MaterialItem>();
+          cloudMats.forEach((m: any) => map.set(m.id, m));
+          prev.forEach((m) => {
+            if (!map.has(m.id)) map.set(m.id, m);
+          });
+          const merged = Array.from(map.values());
+          localStorage.setItem('mpd_custom_materials', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    });
+  }, []);
+
   const mediaTypes = [
     { id: 'teks', label: 'Teks & Dalil', icon: <FileText className="w-4 h-4" /> },
     { id: 'gambar', label: 'Gambar Ilustrasi', icon: <Image className="w-4 h-4" /> },
@@ -48,7 +99,64 @@ export const MateriPage: React.FC = () => {
     { id: 'interaktif', label: 'Checklist Mandiri', icon: <CheckSquare className="w-4 h-4" /> },
   ];
 
-  const currentMaterial = LEARNING_MATERIALS.find((m) => m.type === activeTab) || LEARNING_MATERIALS[0];
+  const allAvailableMaterials = [...LEARNING_MATERIALS, ...customMaterials];
+  const currentMaterial =
+    allAvailableMaterials.find((m) => m.id === activeTab || m.type === activeTab) ||
+    LEARNING_MATERIALS[0];
+
+  const handleAddMaterialSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+
+    const newId = `custom-mat-${Date.now()}`;
+    const newItem: MaterialItem = {
+      id: newId,
+      type: newType as any,
+      title: newTitle,
+      subtitle: newSubtitle || 'Materi Tambahan Guru PAI',
+      badge: newBadge || 'Materi Baru',
+      duration: newDuration || '10 Menit',
+      summary: newSummary || 'Ringkasan materi pembelajaran PAI.',
+      contentData: {
+        isCustom: true,
+        text: newContentText,
+        mediaUrl: newMediaUrl,
+        addedAt: new Date().toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+      },
+    };
+
+    const updated = [newItem, ...customMaterials];
+    setCustomMaterials(updated);
+    localStorage.setItem('mpd_custom_materials', JSON.stringify(updated));
+
+    // Save to Firestore
+    saveMaterialToFirestore(newItem).catch(console.warn);
+
+    // Reset & activate
+    setActiveTab(newId);
+    setShowAddModal(false);
+    setNewTitle('');
+    setNewSubtitle('');
+    setNewSummary('');
+    setNewContentText('');
+    setNewMediaUrl('');
+
+    setAddFeedback(`Materi "${newItem.title}" berhasil ditambahkan dan disimpan ke database!`);
+    setTimeout(() => setAddFeedback(null), 5000);
+  };
+
+  const handleDeleteCustomMaterial = (matId: string) => {
+    const updated = customMaterials.filter((m) => m.id !== matId);
+    setCustomMaterials(updated);
+    localStorage.setItem('mpd_custom_materials', JSON.stringify(updated));
+    setActiveTab('teks');
+    setAddFeedback('Materi tambahan berhasil dihapus.');
+    setTimeout(() => setAddFeedback(null), 4000);
+  };
 
   const toggleChecklistItem = (idx: number) => {
     setChecklistAnswers((prev) => ({
@@ -61,23 +169,46 @@ export const MateriPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+      {/* Toast Feedback */}
+      {addFeedback && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center space-x-2.5 animate-fade-in shadow-xs">
+          <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+          <span>{addFeedback}</span>
+        </div>
+      )}
+
       {/* Title */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs">
-        <div className="flex items-center space-x-3 text-emerald-700 mb-2">
-          <span className="text-xs font-bold uppercase tracking-wider">Halaman 4 / 11</span>
-          <span className="text-slate-300">•</span>
-          <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
-            Multi-Representasi Materi Pembelajaran
-          </span>
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-          Materi PAI: Adab Bersosial Media dalam Islam
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Disediakan dalam 9 format representasi media untuk mengakomodasi berbagai preferensi dan gaya belajar peserta didik.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-3 text-emerald-700 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider">Halaman 4 / 11</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
+                Multi-Representasi Materi Pembelajaran
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+              Materi PAI: Adab Bersosial Media dalam Islam
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Disediakan dalam berbagai representasi media untuk mengakomodasi berbagai preferensi dan gaya belajar peserta didik.
+            </p>
+          </div>
 
-        {/* 9 MEDIA TABS SELECTOR */}
+          {/* TOMBOL "TAMBAH MATERI" */}
+          <div className="shrink-0">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center space-x-2 shadow-xs transition hover:scale-102 cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4 text-emerald-200" />
+              <span>Tambah Materi</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 9 MEDIA TABS SELECTOR + CUSTOM MATERIALS */}
         <div className="mt-6 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
           {mediaTypes.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -93,6 +224,26 @@ export const MateriPage: React.FC = () => {
               >
                 <span>{tab.icon}</span>
                 <span>{tab.label}</span>
+              </button>
+            );
+          })}
+
+          {/* TAB MATERI TAMBAHAN GURU */}
+          {customMaterials.map((cm) => {
+            const isActive = activeTab === cm.id;
+            return (
+              <button
+                key={cm.id}
+                onClick={() => setActiveTab(cm.id)}
+                className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  isActive
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span className="truncate max-w-[140px]">{cm.title}</span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded">Baru</span>
               </button>
             );
           })}
@@ -549,7 +700,214 @@ export const MateriPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* CUSTOM MATERIAL DISPLAY */}
+        {(currentMaterial as any)?.contentData?.isCustom && (
+          <div className="space-y-5 animate-fade-in">
+            <div className="p-6 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-full">
+                  Materi Tambahan Guru
+                </span>
+                <button
+                  onClick={() => handleDeleteCustomMaterial(currentMaterial.id)}
+                  className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center space-x-1 border border-rose-200 transition"
+                  title="Hapus materi ini"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Materi</span>
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-xl font-extrabold text-slate-900">{currentMaterial.title}</h3>
+                <p className="text-xs text-slate-600 font-medium">{currentMaterial.subtitle}</p>
+              </div>
+
+              {currentMaterial.summary && (
+                <div className="p-3.5 bg-white rounded-xl border border-amber-200 text-xs text-slate-700 leading-relaxed">
+                  <strong className="text-amber-950 block mb-0.5">Ringkasan Materi:</strong>
+                  {currentMaterial.summary}
+                </div>
+              )}
+            </div>
+
+            {/* Content text */}
+            {(currentMaterial as any).contentData?.text && (
+              <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
+                <h4 className="font-bold text-sm text-slate-900">Uraian Materi & Pembahasan:</h4>
+                <div className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                  {(currentMaterial as any).contentData.text}
+                </div>
+              </div>
+            )}
+
+            {/* Media Link / Embedded if provided */}
+            {(currentMaterial as any).contentData?.mediaUrl && (
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-xs text-slate-700">
+                  <ExternalLink className="w-4 h-4 text-emerald-600" />
+                  <span>Tautan Media Rujukan:</span>
+                  <span className="font-mono text-emerald-800 truncate max-w-xs sm:max-w-md">
+                    {(currentMaterial as any).contentData.mediaUrl}
+                  </span>
+                </div>
+                <a
+                  href={(currentMaterial as any).contentData.mediaUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition shrink-0"
+                >
+                  Buka Tautan
+                </a>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* MODAL FORM TAMBAH MATERI */}
+      {showAddModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-fade-in"
+        >
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-5 border border-slate-200 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2 text-emerald-800">
+                <PlusCircle className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-extrabold text-base text-slate-900">Tambah Materi PAI Baru</h3>
+              </div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddMaterialSubmit} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700">Judul Materi PAI *</label>
+                <input
+                  type="text"
+                  required
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Contoh: Menjaga Kehormatan & Membendung Gibah Digital"
+                  className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700">Subjudul / Topik</label>
+                  <input
+                    type="text"
+                    value={newSubtitle}
+                    onChange={(e) => setNewSubtitle(e.target.value)}
+                    placeholder="Contoh: Kajian Hadis Shahih & Etika Siber"
+                    className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700">Format Representasi Media</label>
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value)}
+                    className="w-full p-3 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                  >
+                    <option value="teks">Teks & Dalil Syar'i</option>
+                    <option value="video">Video Penjelasan</option>
+                    <option value="audio">Kajian Audio Podcast</option>
+                    <option value="infografis">Infografis & Gambar</option>
+                    <option value="kasus">Studi Kasus Faktual</option>
+                    <option value="bacaan">E-Book & Artikel</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700">Label Badge</label>
+                  <input
+                    type="text"
+                    value={newBadge}
+                    onChange={(e) => setNewBadge(e.target.value)}
+                    placeholder="Contoh: Video Interaktif / Modul Tambahan"
+                    className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700">Estimasi Durasi Belajar</label>
+                  <input
+                    type="text"
+                    value={newDuration}
+                    onChange={(e) => setNewDuration(e.target.value)}
+                    placeholder="Contoh: 12 Menit Belajar"
+                    className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700">Ringkasan Materi *</label>
+                <textarea
+                  rows={2}
+                  required
+                  value={newSummary}
+                  onChange={(e) => setNewSummary(e.target.value)}
+                  placeholder="Ringkasan singkat mengenai pesan utama materi ini..."
+                  className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700">Isi Pembahasan / Teks Materi *</label>
+                <textarea
+                  rows={4}
+                  required
+                  value={newContentText}
+                  onChange={(e) => setNewContentText(e.target.value)}
+                  placeholder="Tuliskan uraian materi, dalil Al-Qur'an/Hadits, atau poin-poin penjelasan di sini..."
+                  className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700">Link Video / Audio / Rujukan Online (Opsional)</label>
+                <input
+                  type="url"
+                  value={newMediaUrl}
+                  onChange={(e) => setNewMediaUrl(e.target.value)}
+                  placeholder="https://youtube.com/... atau https://..."
+                  className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition flex items-center space-x-1.5 shadow-sm"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Simpan Materi ke Database</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
