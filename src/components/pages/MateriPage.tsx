@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LEARNING_MATERIALS } from '../../data/materialsData';
-import { MaterialItem } from '../../types';
+import { MaterialItem, SchoolClass, User } from '../../types';
 import {
   FileText,
   Image,
@@ -24,13 +24,32 @@ import {
   Trash2,
   X,
   CheckCircle2,
+  GraduationCap,
+  Filter,
+  Layers,
 } from 'lucide-react';
 import {
   saveMaterialToFirestore,
   getMaterialsFromFirestore,
 } from '../../services/firebaseService';
 
-export const MateriPage: React.FC = () => {
+interface MateriPageProps {
+  activeClass?: SchoolClass;
+  currentUser?: User;
+}
+
+export function detectGradeLevel(className?: string, phase?: string): 'X' | 'XI' | 'XII' {
+  const upper = `${className || ''} ${phase || ''}`.toUpperCase();
+  if (upper.includes('XII') || upper.includes('12')) return 'XII';
+  if (upper.includes('XI') || upper.includes('11')) return 'XI';
+  return 'X';
+}
+
+export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser }) => {
+  const isStudent = currentUser?.role === 'student';
+  const studentGrade = detectGradeLevel(currentUser?.className || activeClass?.name, activeClass?.phase);
+  const activeClassGrade = detectGradeLevel(activeClass?.name, activeClass?.phase);
+
   const [activeTab, setActiveTab] = useState<string>('teks');
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
@@ -43,6 +62,9 @@ export const MateriPage: React.FC = () => {
     7: true,
     9: true,
   });
+
+  // Filter grade for teacher view
+  const [selectedGradeFilter, setSelectedGradeFilter] = useState<'all' | 'X' | 'XI' | 'XII'>(activeClassGrade);
 
   // Custom materials added by teacher
   const [customMaterials, setCustomMaterials] = useState<MaterialItem[]>(() => {
@@ -59,7 +81,7 @@ export const MateriPage: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addFeedback, setAddFeedback] = useState<string | null>(null);
 
-  // Form states
+  // Form states for new material
   const [newTitle, setNewTitle] = useState('');
   const [newSubtitle, setNewSubtitle] = useState('');
   const [newType, setNewType] = useState('teks');
@@ -68,6 +90,18 @@ export const MateriPage: React.FC = () => {
   const [newSummary, setNewSummary] = useState('');
   const [newContentText, setNewContentText] = useState('');
   const [newMediaUrl, setNewMediaUrl] = useState('');
+  const [newGradeLevel, setNewGradeLevel] = useState<'X' | 'XI' | 'XII' | 'all'>(activeClassGrade);
+
+  // Keep modal grade level & teacher filter synced with active class
+  useEffect(() => {
+    if (activeClass) {
+      const detected = detectGradeLevel(activeClass.name, activeClass.phase);
+      setNewGradeLevel(detected);
+      if (!isStudent) {
+        setSelectedGradeFilter(detected);
+      }
+    }
+  }, [activeClass?.id, isStudent]);
 
   // Load from Firestore
   useEffect(() => {
@@ -99,10 +133,40 @@ export const MateriPage: React.FC = () => {
     { id: 'interaktif', label: 'Checklist Mandiri', icon: <CheckSquare className="w-4 h-4" /> },
   ];
 
-  const allAvailableMaterials = [...LEARNING_MATERIALS, ...customMaterials];
+  // Default materials belong to Kelas X (Fase E - Adab Bersosial Media)
+  const defaultWithGrade: MaterialItem[] = LEARNING_MATERIALS.map((m) => ({
+    ...m,
+    gradeLevel: (m.gradeLevel || 'X') as 'X' | 'XI' | 'XII' | 'all',
+  }));
+
+  const allAvailableMaterials = [...defaultWithGrade, ...customMaterials];
+
+  // Filtering based on role and grade level:
+  // - Students only see materials for their grade level or 'all'
+  // - Teachers can filter by selected grade or view 'all'
+  const displayedMaterials = allAvailableMaterials.filter((m) => {
+    const itemGrade = m.gradeLevel || 'X';
+    if (isStudent) {
+      return itemGrade === 'all' || itemGrade === studentGrade;
+    }
+    if (selectedGradeFilter === 'all') return true;
+    return itemGrade === selectedGradeFilter || itemGrade === 'all';
+  });
+
+  // Keep activeTab pointing to an available material
+  useEffect(() => {
+    if (displayedMaterials.length > 0) {
+      const exists = displayedMaterials.some((m) => m.id === activeTab || m.type === activeTab);
+      if (!exists) {
+        setActiveTab(displayedMaterials[0].id || displayedMaterials[0].type);
+      }
+    }
+  }, [displayedMaterials, activeTab]);
+
   const currentMaterial =
-    allAvailableMaterials.find((m) => m.id === activeTab || m.type === activeTab) ||
-    LEARNING_MATERIALS[0];
+    displayedMaterials.find((m) => m.id === activeTab || m.type === activeTab) ||
+    displayedMaterials[0] ||
+    null;
 
   const handleAddMaterialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,10 +177,11 @@ export const MateriPage: React.FC = () => {
       id: newId,
       type: newType as any,
       title: newTitle,
-      subtitle: newSubtitle || 'Materi Tambahan Guru PAI',
-      badge: newBadge || 'Materi Baru',
+      subtitle: newSubtitle || `Materi PAI Kelas ${newGradeLevel === 'all' ? 'X / XI / XII' : newGradeLevel}`,
+      badge: newBadge || `Materi Kelas ${newGradeLevel === 'all' ? 'Semua' : newGradeLevel}`,
       duration: newDuration || '10 Menit',
       summary: newSummary || 'Ringkasan materi pembelajaran PAI.',
+      gradeLevel: newGradeLevel,
       contentData: {
         isCustom: true,
         text: newContentText,
@@ -136,6 +201,11 @@ export const MateriPage: React.FC = () => {
     // Save to Firestore
     saveMaterialToFirestore(newItem).catch(console.warn);
 
+    // If teacher added for a specific grade, switch filter to that grade so they immediately see it
+    if (!isStudent && newGradeLevel !== 'all') {
+      setSelectedGradeFilter(newGradeLevel);
+    }
+
     // Reset & activate
     setActiveTab(newId);
     setShowAddModal(false);
@@ -145,7 +215,7 @@ export const MateriPage: React.FC = () => {
     setNewContentText('');
     setNewMediaUrl('');
 
-    setAddFeedback(`Materi "${newItem.title}" berhasil ditambahkan dan disimpan ke database!`);
+    setAddFeedback(`Materi "${newItem.title}" untuk ${newGradeLevel === 'all' ? 'Semua Tingkat' : `Kelas ${newGradeLevel}`} berhasil disimpan ke database!`);
     setTimeout(() => setAddFeedback(null), 5000);
   };
 
@@ -177,8 +247,8 @@ export const MateriPage: React.FC = () => {
         </div>
       )}
 
-      {/* Title */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs">
+      {/* Title & Filter Bar */}
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center space-x-3 text-emerald-700 mb-2">
@@ -189,10 +259,12 @@ export const MateriPage: React.FC = () => {
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-              Materi PAI: Adab Bersosial Media dalam Islam
+              Materi PAI: Multi-Representasi & Terintegrasi
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              Disediakan dalam berbagai representasi media untuk mengakomodasi berbagai preferensi dan gaya belajar peserta didik.
+              {isStudent
+                ? `Materi khusus disesuaikan untuk siswa Kelas ${studentGrade} agar fokus dan tidak tercampur materi jenjang lain.`
+                : 'Materi terstruktur per tingkat kelas (X, XI, XII) untuk diferensiasi konten pembelajaran PAI.'}
             </p>
           </div>
 
@@ -208,67 +280,187 @@ export const MateriPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 9 MEDIA TABS SELECTOR + CUSTOM MATERIALS */}
-        <div className="mt-6 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-          {mediaTypes.map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
+        {/* GRADE FILTER BAR: GURU VS SISWA */}
+        {!isStudent ? (
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2 text-slate-700 text-xs font-semibold">
+              <Filter className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>Filter Tingkat Kelas:</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  isActive
-                    ? 'bg-emerald-700 text-white shadow-sm shadow-emerald-900/30'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                type="button"
+                onClick={() => setSelectedGradeFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  selectedGradeFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
+                Semua Tingkat ({allAvailableMaterials.length})
               </button>
-            );
-          })}
-
-          {/* TAB MATERI TAMBAHAN GURU */}
-          {customMaterials.map((cm) => {
-            const isActive = activeTab === cm.id;
-            return (
               <button
-                key={cm.id}
-                onClick={() => setActiveTab(cm.id)}
-                className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  isActive
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                type="button"
+                onClick={() => setSelectedGradeFilter('X')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  selectedGradeFilter === 'X'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-800'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span className="truncate max-w-[140px]">{cm.title}</span>
-                <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded">Baru</span>
+                Kelas X (Fase E)
               </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* MATERIAL CONTENT CARD */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
-        {/* Header of Active Material */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
-          <div>
-            <div className="flex items-center space-x-2 mb-1">
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                {currentMaterial.badge}
-              </span>
-              <span className="text-xs text-slate-400 font-medium">
-                {currentMaterial.duration}
+              <button
+                type="button"
+                onClick={() => setSelectedGradeFilter('XI')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  selectedGradeFilter === 'XI'
+                    ? 'bg-blue-700 text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-blue-50 hover:text-blue-800'
+                }`}
+              >
+                Kelas XI (Fase F)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedGradeFilter('XII')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  selectedGradeFilter === 'XII'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-purple-50 hover:text-purple-800'
+                }`}
+              >
+                Kelas XII (Fase F)
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2 text-emerald-900 font-semibold">
+              <GraduationCap className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>
+                Menampilkan Materi Khusus: <strong>Kelas {studentGrade}</strong> ({activeClass?.phase || 'Kurikulum Merdeka'})
               </span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
-              {currentMaterial.title}
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">{currentMaterial.subtitle}</p>
+            <span className="text-[11px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+              {displayedMaterials.length} Materi Aktif
+            </span>
           </div>
+        )}
+
+        {/* TABS SELECTOR DARI MATERI YANG SESUAI FILTER */}
+        {displayedMaterials.length > 0 ? (
+          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            {displayedMaterials.map((mat) => {
+              const isActive = activeTab === mat.id || activeTab === mat.type;
+              const isCustom = (mat as any)?.contentData?.isCustom;
+              const iconObj = mediaTypes.find((t) => t.id === mat.type);
+
+              return (
+                <button
+                  key={mat.id}
+                  onClick={() => setActiveTab(mat.id)}
+                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    isActive
+                      ? isCustom
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-emerald-700 text-white shadow-sm shadow-emerald-900/30'
+                      : isCustom
+                      ? 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  {isCustom ? (
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  ) : (
+                    <span className="shrink-0">{iconObj?.icon || <FileText className="w-4 h-4" />}</span>
+                  )}
+                  <span className="truncate max-w-[150px]">
+                    {isCustom ? mat.title : iconObj?.label || mat.title}
+                  </span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'
+                    }`}
+                  >
+                    {mat.gradeLevel === 'all' ? 'Semua' : `Kls ${mat.gradeLevel || 'X'}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="border-t border-slate-100 pt-4 text-center py-6 text-slate-500 text-xs">
+            Tidak ada materi yang sesuai dengan filter tingkat kelas yang dipilih.
+          </div>
+        )}
+      </div>
+
+      {/* MATERIAL CONTENT CARD ATAU EMPTY STATE */}
+      {!currentMaterial ? (
+        <div className="bg-white rounded-3xl p-10 border border-slate-200 shadow-xs text-center space-y-4">
+          <div className="w-16 h-16 rounded-3xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center mx-auto">
+            <BookOpen className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-slate-900">
+              Belum Ada Materi untuk {selectedGradeFilter === 'all' ? 'Tingkat Kelas Ini' : `Kelas ${selectedGradeFilter}`}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              {isStudent
+                ? `Guru belum mengunggah materi khusus untuk Kelas ${studentGrade}. Silakan konfirmasi ke guru pengampu Anda.`
+                : `Anda dapat menambahkan materi baru khusus untuk Kelas ${selectedGradeFilter} dengan menekan tombol di bawah.`}
+            </p>
+          </div>
+          {!isStudent && (
+            <button
+              onClick={() => {
+                if (selectedGradeFilter !== 'all') {
+                  setNewGradeLevel(selectedGradeFilter);
+                }
+                setShowAddModal(true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center space-x-1.5 shadow-sm transition"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Tambah Materi Kelas {selectedGradeFilter === 'all' ? 'X' : selectedGradeFilter}</span>
+            </button>
+          )}
         </div>
+      ) : (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+          {/* Header of Active Material */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+            <div>
+              <div className="flex items-center space-x-2 mb-1">
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                    currentMaterial.gradeLevel === 'XI'
+                      ? 'bg-blue-100 text-blue-800'
+                      : currentMaterial.gradeLevel === 'XII'
+                      ? 'bg-purple-100 text-purple-800'
+                      : currentMaterial.gradeLevel === 'all'
+                      ? 'bg-teal-100 text-teal-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {currentMaterial.gradeLevel === 'all'
+                    ? 'Semua Tingkat (X, XI, XII)'
+                    : `Tingkat: Kelas ${currentMaterial.gradeLevel || 'X'}`}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
+                  {currentMaterial.badge}
+                </span>
+                <span className="text-xs text-slate-400 font-medium">
+                  {currentMaterial.duration}
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+                {currentMaterial.title}
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">{currentMaterial.subtitle}</p>
+            </div>
+          </div>
 
         {/* TAB 1: TEKS & DALIL */}
         {activeTab === 'teks' && (
@@ -765,6 +957,7 @@ export const MateriPage: React.FC = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* MODAL FORM TAMBAH MATERI */}
       {showAddModal && (
@@ -788,6 +981,32 @@ export const MateriPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleAddMaterialSubmit} className="space-y-4 text-xs">
+              {/* OPSI TARGET TINGKAT KELAS: X, XI, XII, SEMUA */}
+              <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-2">
+                <label className="font-bold text-emerald-950 flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5">
+                    <GraduationCap className="w-4 h-4 text-emerald-700" />
+                    <span>Target Tingkat Kelas Siswa *</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-md">
+                    Isolasi Akses Siswa
+                  </span>
+                </label>
+                <select
+                  value={newGradeLevel}
+                  onChange={(e) => setNewGradeLevel(e.target.value as any)}
+                  className="w-full p-2.5 rounded-xl border border-emerald-300 bg-white font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                >
+                  <option value="X">Kelas X (Fase E - SMA/SMK)</option>
+                  <option value="XI">Kelas XI (Fase F - SMA/SMK)</option>
+                  <option value="XII">Kelas XII (Fase F - SMA/SMK)</option>
+                  <option value="all">Semua Tingkat (X, XI, & XII)</option>
+                </select>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  ℹ️ <strong>Proteksi Tingkat:</strong> Siswa Kelas X hanya dapat melihat materi Kelas X/Semua, dan tidak dapat melihat materi Kelas XI. Begitu pula sebaliknya.
+                </p>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700">Judul Materi PAI *</label>
                 <input

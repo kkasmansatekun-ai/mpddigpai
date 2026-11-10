@@ -554,7 +554,9 @@ export default function App() {
 
           {activePage === 'objectives' && <TujuanPage />}
 
-          {activePage === 'materials' && <MateriPage />}
+          {activePage === 'materials' && (
+            <MateriPage activeClass={activeClass} currentUser={currentUser} />
+          )}
 
           {activePage === 'resources' && <SumberBelajarPage />}
 

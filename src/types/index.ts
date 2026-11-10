@@ -58,6 +58,7 @@ export interface MaterialItem {
   duration?: string;
   summary: string;
   contentData: any;
+  gradeLevel?: 'X' | 'XI' | 'XII' | 'all';
 }
 
 export interface ActivityItem {

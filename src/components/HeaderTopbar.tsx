@@ -141,82 +141,8 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
           </div>
         </div>
 
-        {/* Center & Right: Prayer Countdown, Small Laravel Badge & User Switcher */}
+        {/* Right: User Switcher Dropdown (Guru & Siswa) */}
         <div className="flex items-center space-x-2.5 w-full sm:w-auto justify-end">
-          {/* TOPBAR WIDGET WAKTU SHOLAT */}
-          <div className="relative">
-            <button
-              onClick={() => setShowScheduleDropdown(!showScheduleDropdown)}
-              className="bg-emerald-50/90 hover:bg-emerald-100/90 border border-emerald-200/90 rounded-xl px-3 py-1.5 flex items-center space-x-3 text-xs shadow-2xs transition group"
-              title="Klik untuk melihat seluruh jadwal sholat hari ini"
-            >
-              {/* Jam Digital WIB */}
-              <div className="flex items-center space-x-1.5">
-                <Clock className="w-3.5 h-3.5 text-emerald-700" />
-                <span className="font-mono font-bold text-slate-900 text-xs tracking-tight">
-                  {timeStr}
-                </span>
-              </div>
-
-              <div className="h-3.5 w-px bg-emerald-200"></div>
-
-              {/* Countdown Menuju Sholat */}
-              <div className="flex items-center space-x-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                <span className="text-slate-600 text-[11px]">
-                  Menuju <strong className="text-emerald-900">{nextPrayerName}</strong> ({nextPrayerTime}):
-                </span>
-                <span className="font-mono font-bold text-emerald-800 text-xs bg-emerald-100/80 px-1.5 py-0.5 rounded">
-                  {countdownStr}
-                </span>
-                <ChevronDown className="w-3 h-3 text-emerald-700 ml-0.5" />
-              </div>
-            </button>
-
-            {/* Dropdown 5 Jadwal Sholat */}
-            {showScheduleDropdown && (
-              <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-emerald-100 p-4 z-40 animate-fade-in">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center space-x-1.5 text-emerald-800 font-bold text-xs">
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>Jadwal Sholat Hari Ini (WIB)</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400">Padang / Jakarta</span>
-                </div>
-                <div className="divide-y divide-slate-100 mt-2">
-                  {prayers.map((p) => {
-                    const isNext = p.name === nextPrayerName;
-                    return (
-                      <div
-                        key={p.name}
-                        className={`flex items-center justify-between py-2 text-xs px-2 rounded-lg ${
-                          isNext ? 'bg-emerald-50 font-bold text-emerald-900' : 'text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <span className={`w-2 h-2 rounded-full ${isNext ? 'bg-emerald-600' : 'bg-slate-300'}`}></span>
-                          <span>{p.name}</span>
-                          <span className="font-arabic text-slate-400 text-xs">{p.arabicName}</span>
-                        </div>
-                        <div className="flex items-center space-x-2 font-mono">
-                          <span>{p.timeStr} WIB</span>
-                          {isNext && (
-                            <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-sans font-bold">
-                              Berikutnya
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500 text-center">
-                  “Sesungguhnya shalat itu adalah fardhu yang ditentukan waktunya atas orang-orang yang beriman.” (QS. An-Nisa: 103)
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* User Switcher Dropdown (Guru & Siswa) */}
           <div className="relative">
             <button
