@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LEARNING_MATERIALS } from '../../data/materialsData';
 import { MaterialItem, SchoolClass, User } from '../../types';
 import {
@@ -27,6 +27,15 @@ import {
   GraduationCap,
   Filter,
   Layers,
+  Eye,
+  Footprints,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  FileUp,
+  File,
+  Music,
+  Film,
 } from 'lucide-react';
 import {
   saveMaterialToFirestore,
@@ -85,12 +94,63 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
   const [newTitle, setNewTitle] = useState('');
   const [newSubtitle, setNewSubtitle] = useState('');
   const [newType, setNewType] = useState('teks');
-  const [newBadge, setNewBadge] = useState('Materi Tambahan');
-  const [newDuration, setNewDuration] = useState('10 Menit');
+  const [newCategory, setNewCategory] = useState<'visual' | 'auditory' | 'kinesthetic'>('visual');
   const [newSummary, setNewSummary] = useState('');
   const [newContentText, setNewContentText] = useState('');
   const [newMediaUrl, setNewMediaUrl] = useState('');
   const [newGradeLevel, setNewGradeLevel] = useState<'X' | 'XI' | 'XII' | 'all'>(activeClassGrade);
+  const [uploadedFile, setUploadedFile] = useState<{
+    name: string;
+    size: string;
+    type: string;
+    extension: string;
+    dataUrl: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper untuk membaca upload file berbagai format (audio, video, visual, pdf, excel, dll)
+  const handleFileUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const ext = file.name.slice(((file.name.lastIndexOf('.') - 1) >>> 0) + 2).toLowerCase();
+    const sizeKb = Math.round(file.size / 1024);
+    const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+
+    // Otomatis sinkronkan format dan kategori berdasarkan jenis berkas
+    if (['mp3', 'wav', 'm4a', 'ogg', 'aac'].includes(ext)) {
+      setNewCategory('auditory');
+      setNewType('audio');
+    } else if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext)) {
+      setNewCategory('visual');
+      setNewType('gambar');
+    } else if (['pdf', 'doc', 'docx'].includes(ext)) {
+      setNewCategory('visual');
+      setNewType('bacaan');
+    } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
+      setNewCategory('kinesthetic');
+      setNewType('kasus');
+    } else if (['mp4', 'webm', 'mov'].includes(ext)) {
+      setNewType('video');
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUploadedFile({
+        name: file.name,
+        size: sizeStr,
+        type: file.type || 'application/octet-stream',
+        extension: ext,
+        dataUrl: reader.result as string,
+      });
+
+      if (!newTitle.trim()) {
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        setNewTitle(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Keep modal grade level & teacher filter synced with active class
   useEffect(() => {
@@ -173,19 +233,30 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     if (!newTitle.trim()) return;
 
     const newId = `custom-mat-${Date.now()}`;
+    const categoryLabel =
+      newCategory === 'auditory'
+        ? 'Audio'
+        : newCategory === 'kinesthetic'
+        ? 'Kinestetik'
+        : 'Visual';
+
     const newItem: MaterialItem = {
       id: newId,
       type: newType as any,
       title: newTitle,
       subtitle: newSubtitle || `Materi PAI Kelas ${newGradeLevel === 'all' ? 'X / XI / XII' : newGradeLevel}`,
-      badge: newBadge || `Materi Kelas ${newGradeLevel === 'all' ? 'Semua' : newGradeLevel}`,
-      duration: newDuration || '10 Menit',
+      badge: `Kategori: ${categoryLabel}`,
+      duration: newCategory === 'auditory' ? '10 Menit Audio' : '10 Menit Baca',
       summary: newSummary || 'Ringkasan materi pembelajaran PAI.',
       gradeLevel: newGradeLevel,
+      learningStyleCategory: newCategory,
       contentData: {
         isCustom: true,
         text: newContentText,
         mediaUrl: newMediaUrl,
+        fileAttachment: uploadedFile || undefined,
+        learningStyleCategory: newCategory,
+        categoryName: categoryLabel,
         addedAt: new Date().toLocaleDateString('id-ID', {
           day: 'numeric',
           month: 'long',
@@ -214,8 +285,17 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     setNewSummary('');
     setNewContentText('');
     setNewMediaUrl('');
+    setUploadedFile(null);
 
-    setAddFeedback(`Materi "${newItem.title}" untuk ${newGradeLevel === 'all' ? 'Semua Tingkat' : `Kelas ${newGradeLevel}`} berhasil disimpan ke database!`);
+    setAddFeedback(
+      `Materi "${newItem.title}" (Kategori: ${categoryLabel}) berhasil disimpan ke database & otomatis tersedia di menu Aktivitas Belajar tab Gaya ${
+        categoryLabel === 'Audio'
+          ? 'AUDITORI'
+          : categoryLabel === 'Visual'
+          ? 'VISUAL'
+          : 'KINESTETIK'
+      }!`
+    );
     setTimeout(() => setAddFeedback(null), 5000);
   };
 
@@ -934,6 +1014,99 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
               </div>
             )}
 
+            {/* Berkas Materi Pembelajaran (Upload File Multi-Format) */}
+            {(currentMaterial as any).contentData?.fileAttachment && (
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px] uppercase">
+                      {(currentMaterial as any).contentData.fileAttachment.extension}
+                    </span>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">
+                        {(currentMaterial as any).contentData.fileAttachment.name}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        Berkas Penunjang Materi • {(currentMaterial as any).contentData.fileAttachment.size}
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href={(currentMaterial as any).contentData.fileAttachment.dataUrl}
+                    download={(currentMaterial as any).contentData.fileAttachment.name}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center space-x-1.5 shadow-xs transition shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Unduh Berkas</span>
+                  </a>
+                </div>
+
+                {/* AUDIO PLAYER: .mp3, .wav, .m4a, .ogg */}
+                {['mp3', 'wav', 'm4a', 'ogg', 'aac'].includes(
+                  (currentMaterial as any).contentData.fileAttachment.extension
+                ) && (
+                  <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-1.5">
+                    <span className="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
+                      <Volume2 className="w-4 h-4 text-blue-700" />
+                      <span>Pemutar Audio Kajian / Podcast PAI:</span>
+                    </span>
+                    <audio
+                      controls
+                      className="w-full h-10 rounded-lg outline-hidden"
+                      src={(currentMaterial as any).contentData.fileAttachment.dataUrl}
+                    />
+                  </div>
+                )}
+
+                {/* VIDEO PLAYER: .mp4, .webm, .mov */}
+                {['mp4', 'webm', 'mov'].includes(
+                  (currentMaterial as any).contentData.fileAttachment.extension
+                ) && (
+                  <div className="rounded-xl overflow-hidden border border-slate-300 bg-black">
+                    <video
+                      controls
+                      className="w-full max-h-80 object-contain mx-auto"
+                      src={(currentMaterial as any).contentData.fileAttachment.dataUrl}
+                    />
+                  </div>
+                )}
+
+                {/* IMAGE PREVIEW: .jpg, .png, .webp, .gif */}
+                {['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(
+                  (currentMaterial as any).contentData.fileAttachment.extension
+                ) && (
+                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-white p-2 text-center">
+                    <img
+                      src={(currentMaterial as any).contentData.fileAttachment.dataUrl}
+                      alt={(currentMaterial as any).contentData.fileAttachment.name}
+                      className="max-h-80 w-auto max-w-full object-contain mx-auto rounded-lg"
+                    />
+                  </div>
+                )}
+
+                {/* DOKUMEN / SPREADSHEET: .pdf, .xlsx, .csv, .docx */}
+                {['pdf', 'xlsx', 'xls', 'csv', 'docx', 'pptx'].includes(
+                  (currentMaterial as any).contentData.fileAttachment.extension
+                ) && (
+                  <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
+                    <span className="text-emerald-950 font-semibold flex items-center space-x-1.5">
+                      <FileText className="w-4 h-4 text-emerald-700" />
+                      <span>
+                        Dokumen/Tabel siap dipelajari ({((currentMaterial as any).contentData.fileAttachment.extension).toUpperCase()})
+                      </span>
+                    </span>
+                    <a
+                      href={(currentMaterial as any).contentData.fileAttachment.dataUrl}
+                      download={(currentMaterial as any).contentData.fileAttachment.name}
+                      className="text-emerald-800 font-bold underline hover:text-emerald-900"
+                    >
+                      Buka di Perangkat
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Media Link / Embedded if provided */}
             {(currentMaterial as any).contentData?.mediaUrl && (
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
@@ -1048,27 +1221,144 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700">Label Badge</label>
-                  <input
-                    type="text"
-                    value={newBadge}
-                    onChange={(e) => setNewBadge(e.target.value)}
-                    placeholder="Contoh: Video Interaktif / Modul Tambahan"
-                    className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
-                  />
+              {/* KATEGORI MATERI GAYA BELAJAR (AUDIO, VISUAL, KINESTETIK) */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-xs text-slate-900 flex items-center space-x-1.5">
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <span>Kategori Materi (Pilihan Gaya Belajar) *</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    Integrasi Otomatis
+                  </span>
                 </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Pilih salah satu kategori materi. Sistem akan otomatis menampilkan materi ini di menu <strong>Aktivitas Belajar Berdiferensiasi Gaya Belajar</strong> sesuai gaya belajar yang dipilih:
+                </p>
 
-                <div className="space-y-1.5">
-                  <label className="font-bold text-slate-700">Estimasi Durasi Belajar</label>
-                  <input
-                    type="text"
-                    value={newDuration}
-                    onChange={(e) => setNewDuration(e.target.value)}
-                    placeholder="Contoh: 12 Menit Belajar"
-                    className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
-                  />
+                {/* PILIHAN LIST: *. Audio, *. Visual, *. Kinestetik */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  {/* OPSI *. Audio */}
+                  <div
+                    onClick={() => {
+                      setNewCategory('auditory');
+                      if (newType === 'teks') setNewType('audio');
+                    }}
+                    className={`p-3 rounded-2xl border-2 cursor-pointer transition flex flex-col justify-between space-y-2 ${
+                      newCategory === 'auditory'
+                        ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20 shadow-xs'
+                        : 'border-slate-200 hover:border-blue-300 bg-white hover:bg-blue-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className={`w-7 h-7 rounded-xl flex items-center justify-center ${
+                          newCategory === 'auditory'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </div>
+                      <span className="font-extrabold text-xs text-slate-900">*. Audio</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      Materi tersedia di menu Aktivitas Belajar tab <strong>Gaya AUDITORI</strong>.
+                    </p>
+                    <div className="flex items-center space-x-1.5 text-[10px] font-bold text-blue-700 pt-1 border-t border-blue-100">
+                      <span
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${
+                          newCategory === 'auditory'
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {newCategory === 'auditory' && '✓'}
+                      </span>
+                      <span>Kategori Audio</span>
+                    </div>
+                  </div>
+
+                  {/* OPSI *. Visual */}
+                  <div
+                    onClick={() => {
+                      setNewCategory('visual');
+                      if (newType === 'audio') setNewType('teks');
+                    }}
+                    className={`p-3 rounded-2xl border-2 cursor-pointer transition flex flex-col justify-between space-y-2 ${
+                      newCategory === 'visual'
+                        ? 'border-emerald-600 bg-emerald-50/80 ring-2 ring-emerald-500/20 shadow-xs'
+                        : 'border-slate-200 hover:border-emerald-300 bg-white hover:bg-emerald-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className={`w-7 h-7 rounded-xl flex items-center justify-center ${
+                          newCategory === 'visual'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-emerald-100 text-emerald-700'
+                        }`}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </div>
+                      <span className="font-extrabold text-xs text-slate-900">*. Visual</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      Materi tersedia di menu Aktivitas Belajar tab <strong>Gaya VISUAL</strong>.
+                    </p>
+                    <div className="flex items-center space-x-1.5 text-[10px] font-bold text-emerald-700 pt-1 border-t border-emerald-100">
+                      <span
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${
+                          newCategory === 'visual'
+                            ? 'border-emerald-600 bg-emerald-600 text-white'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {newCategory === 'visual' && '✓'}
+                      </span>
+                      <span>Kategori Visual</span>
+                    </div>
+                  </div>
+
+                  {/* OPSI *. Kinestetik */}
+                  <div
+                    onClick={() => {
+                      setNewCategory('kinesthetic');
+                    }}
+                    className={`p-3 rounded-2xl border-2 cursor-pointer transition flex flex-col justify-between space-y-2 ${
+                      newCategory === 'kinesthetic'
+                        ? 'border-amber-600 bg-amber-50/80 ring-2 ring-amber-500/20 shadow-xs'
+                        : 'border-slate-200 hover:border-amber-300 bg-white hover:bg-amber-50/30'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className={`w-7 h-7 rounded-xl flex items-center justify-center ${
+                          newCategory === 'kinesthetic'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        <Footprints className="w-4 h-4" />
+                      </div>
+                      <span className="font-extrabold text-xs text-slate-900">*. Kinestetik</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">
+                      Materi tersedia di menu Aktivitas Belajar tab <strong>Gaya KINESTETIK</strong>.
+                    </p>
+                    <div className="flex items-center space-x-1.5 text-[10px] font-bold text-amber-700 pt-1 border-t border-amber-100">
+                      <span
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${
+                          newCategory === 'kinesthetic'
+                            ? 'border-amber-600 bg-amber-600 text-white'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {newCategory === 'kinesthetic' && '✓'}
+                      </span>
+                      <span>Kategori Kinestetik</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1094,6 +1384,81 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                   placeholder="Tuliskan uraian materi, dalil Al-Qur'an/Hadits, atau poin-poin penjelasan di sini..."
                   className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
                 />
+              </div>
+
+              {/* UPLOAD BERKAS MATERI PEMBELAJARAN (MULTI-FORMAT) */}
+              <div className="space-y-2 p-3.5 bg-emerald-50/60 rounded-2xl border border-emerald-200">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-xs text-emerald-950 flex items-center space-x-1.5">
+                    <FileUp className="w-4 h-4 text-emerald-700" />
+                    <span>Upload Berkas Materi Pembelajaran (Multi-Format)</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-md">
+                    Audio • Visual • Kinestetik
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-900/80 leading-relaxed">
+                  Unggah berkas penunjang langsung dari perangkat: <strong>.pdf, .mp3, .wav, .mp4, .csv, .xlsx, .jpg, .png, .docx</strong>, dll.
+                </p>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.mp3,.wav,.m4a,.ogg,.mp4,.webm,.csv,.xlsx,.xls,.jpg,.jpeg,.png,.webp,.gif,.docx,.pptx"
+                  className="hidden"
+                  onChange={handleFileUploadChange}
+                />
+
+                {!uploadedFile ? (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-emerald-300 hover:border-emerald-600 rounded-2xl p-4 text-center cursor-pointer transition bg-white hover:bg-emerald-50/50 flex flex-col items-center justify-center space-y-1.5"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        Klik untuk Memilih Berkas dari Perangkat
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Audio (.mp3, .wav) • Video (.mp4) • Dokumen (.pdf) • Gambar (.jpg, .png) • Data (.xlsx, .csv)
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white rounded-xl border border-emerald-300 flex items-center justify-between shadow-2xs">
+                    <div className="flex items-center space-x-2.5 overflow-hidden">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
+                        {uploadedFile.extension}
+                      </div>
+                      <div className="truncate">
+                        <p className="text-xs font-bold text-slate-900 truncate">{uploadedFile.name}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">{uploadedFile.size} • Siap diunggah</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-1 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition cursor-pointer"
+                      >
+                        Ganti
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadedFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                        className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition cursor-pointer"
+                        title="Hapus berkas"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">

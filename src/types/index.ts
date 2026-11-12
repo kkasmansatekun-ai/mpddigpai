@@ -54,11 +54,12 @@ export interface MaterialItem {
   type: 'teks' | 'gambar' | 'infografis' | 'video' | 'audio' | 'presentasi' | 'kasus' | 'bacaan' | 'interaktif';
   title: string;
   subtitle: string;
-  badge: string;
+  badge?: string;
   duration?: string;
   summary: string;
   contentData: any;
   gradeLevel?: 'X' | 'XI' | 'XII' | 'all';
+  learningStyleCategory?: 'visual' | 'auditory' | 'kinesthetic';
 }
 
 export interface ActivityItem {

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ACTIVITIES_DATA } from '../../data/materialsData';
-import { LearningStyle, User } from '../../types';
+import { LearningStyle, User, MaterialItem } from '../../types';
 import {
   Compass,
   Eye,
@@ -12,7 +12,19 @@ import {
   Upload,
   AlertCircle,
   Sparkles,
+  BookOpen,
+  Volume2,
+  ExternalLink,
+  Calendar,
+  Layers,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  Music,
+  Film,
+  File,
 } from 'lucide-react';
+import { getMaterialsFromFirestore } from '../../services/firebaseService';
 
 interface AktivitasPageProps {
   currentUser: User;
@@ -30,6 +42,64 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
   );
   const [responseText, setResponseText] = useState<string>('');
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null);
+
+  // Load custom materials added by teacher
+  const [customMaterials, setCustomMaterials] = useState<MaterialItem[]>(() => {
+    const saved = localStorage.getItem('mpd_custom_materials');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    getMaterialsFromFirestore().then((cloudMats) => {
+      if (cloudMats && cloudMats.length > 0) {
+        setCustomMaterials((prev) => {
+          const map = new Map<string, MaterialItem>();
+          cloudMats.forEach((m: any) => map.set(m.id, m));
+          prev.forEach((m) => {
+            if (!map.has(m.id)) map.set(m.id, m);
+          });
+          const merged = Array.from(map.values());
+          localStorage.setItem('mpd_custom_materials', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    });
+  }, []);
+
+  // Filter materials based on selected learning style
+  const teacherMaterialsForSelectedStyle = customMaterials.filter((m) => {
+    const cat =
+      m.learningStyleCategory ||
+      (m.contentData as any)?.learningStyleCategory ||
+      (m.contentData as any)?.category;
+
+    if (selectedStyle === 'auditory') {
+      return cat === 'auditory' || cat === 'audio' || m.type === 'audio';
+    }
+    if (selectedStyle === 'visual') {
+      return (
+        cat === 'visual' ||
+        m.type === 'gambar' ||
+        m.type === 'infografis' ||
+        m.type === 'presentasi'
+      );
+    }
+    if (selectedStyle === 'kinesthetic') {
+      return (
+        cat === 'kinesthetic' ||
+        cat === 'kinestetik' ||
+        m.type === 'kasus' ||
+        m.type === 'interaktif'
+      );
+    }
+    return false;
+  });
 
   const currentActivity =
     ACTIVITIES_DATA.find((a) => a.style === selectedStyle) || ACTIVITIES_DATA[0];
@@ -155,6 +225,224 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
           <p className="text-xs font-semibold">{submittedMessage}</p>
         </div>
       )}
+
+      {/* SECTION MATERI TERINTEGRASI DARI GURU SESUAI KATEGORI GAYA BELAJAR */}
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center space-x-2.5">
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                selectedStyle === 'auditory'
+                  ? 'bg-blue-100 text-blue-700'
+                  : selectedStyle === 'visual'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}
+            >
+              {selectedStyle === 'auditory' ? (
+                <Volume2 className="w-5 h-5" />
+              ) : selectedStyle === 'visual' ? (
+                <Eye className="w-5 h-5" />
+              ) : (
+                <Footprints className="w-5 h-5" />
+              )}
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900">
+                Materi PAI Guru: Kategori {selectedStyle === 'auditory' ? 'Audio (Gaya AUDITORI)' : selectedStyle === 'visual' ? 'Visual (Gaya VISUAL)' : 'Kinestetik (Gaya KINESTETIK)'}
+              </h3>
+              <p className="text-xs text-slate-500">
+                {selectedStyle === 'auditory'
+                  ? 'Materi kategori Audio dari guru pengampu yang siap dipelajari untuk gaya belajar AUDITORI'
+                  : selectedStyle === 'visual'
+                  ? 'Materi kategori Visual dari guru pengampu yang siap dipelajari untuk gaya belajar VISUAL'
+                  : 'Materi kategori Kinestetik dari guru pengampu yang siap dipelajari untuk gaya belajar KINESTETIK'}
+              </p>
+            </div>
+          </div>
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 ${
+              selectedStyle === 'auditory'
+                ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                : selectedStyle === 'visual'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-amber-50 text-amber-800 border border-amber-200'
+            }`}
+          >
+            {teacherMaterialsForSelectedStyle.length} Materi Tersedia
+          </span>
+        </div>
+
+        {teacherMaterialsForSelectedStyle.length > 0 ? (
+          <div className="space-y-4">
+            {teacherMaterialsForSelectedStyle.map((m) => (
+              <div
+                key={m.id}
+                className={`p-5 rounded-2xl border transition space-y-3 ${
+                  selectedStyle === 'auditory'
+                    ? 'bg-blue-50/50 border-blue-200 hover:border-blue-400'
+                    : selectedStyle === 'visual'
+                    ? 'bg-emerald-50/50 border-emerald-200 hover:border-emerald-400'
+                    : 'bg-amber-50/50 border-amber-200 hover:border-amber-400'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">
+                        Materi Guru • {selectedStyle === 'auditory' ? 'Kategori Audio' : selectedStyle === 'visual' ? 'Kategori Visual' : 'Kategori Kinestetik'}
+                      </span>
+                      {m.gradeLevel && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-900 text-white">
+                          {m.gradeLevel === 'all' ? 'Semua Tingkat' : `Kelas ${m.gradeLevel}`}
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-base font-extrabold text-slate-900">{m.title}</h4>
+                    <p className="text-xs text-slate-600">{m.subtitle}</p>
+                  </div>
+
+                  {(m.contentData as any)?.mediaUrl && (
+                    <a
+                      href={(m.contentData as any).mediaUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center space-x-1.5 shadow-xs transition self-start shrink-0"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>{selectedStyle === 'auditory' ? 'Buka / Putar Audio' : 'Buka Tautan Media'}</span>
+                    </a>
+                  )}
+                </div>
+
+                {m.summary && (
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-700 leading-relaxed">
+                    <strong className="text-slate-900 block mb-0.5">Ringkasan Materi:</strong>
+                    {m.summary}
+                  </div>
+                )}
+
+                {(m.contentData as any)?.text && (
+                  <div className="p-3.5 bg-white/90 rounded-xl border border-slate-200 text-xs text-slate-700 leading-relaxed whitespace-pre-line max-h-48 overflow-y-auto">
+                    <strong className="text-slate-900 block mb-1">Uraian Pembahasan:</strong>
+                    {(m.contentData as any).text}
+                  </div>
+                )}
+
+                {/* Berkas Materi Multi-Format (Audio, Video, Gambar, Dokumen, Tabel) */}
+                {(m.contentData as any)?.fileAttachment && (
+                  <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+                      <div className="flex items-center space-x-2.5">
+                        <span className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
+                          {(m.contentData as any).fileAttachment.extension}
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">
+                            {(m.contentData as any).fileAttachment.name}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-medium">
+                            Berkas Penunjang Gaya Belajar • {(m.contentData as any).fileAttachment.size}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={(m.contentData as any).fileAttachment.dataUrl}
+                        download={(m.contentData as any).fileAttachment.name}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center space-x-1.5 shadow-xs transition self-start sm:self-auto shrink-0"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Unduh Berkas</span>
+                      </a>
+                    </div>
+
+                    {/* AUDIO PLAYER: .mp3, .wav, .m4a, .ogg */}
+                    {['mp3', 'wav', 'm4a', 'ogg', 'aac'].includes(
+                      (m.contentData as any).fileAttachment.extension
+                    ) && (
+                      <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-1.5">
+                        <span className="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
+                          <Volume2 className="w-4 h-4 text-blue-700" />
+                          <span>Pemutar Audio Kajian / Podcast (Gaya Auditori):</span>
+                        </span>
+                        <audio
+                          controls
+                          className="w-full h-10 rounded-lg outline-hidden"
+                          src={(m.contentData as any).fileAttachment.dataUrl}
+                        />
+                      </div>
+                    )}
+
+                    {/* VIDEO PLAYER: .mp4, .webm, .mov */}
+                    {['mp4', 'webm', 'mov'].includes(
+                      (m.contentData as any).fileAttachment.extension
+                    ) && (
+                      <div className="rounded-xl overflow-hidden border border-slate-300 bg-black">
+                        <video
+                          controls
+                          className="w-full max-h-72 object-contain mx-auto"
+                          src={(m.contentData as any).fileAttachment.dataUrl}
+                        />
+                      </div>
+                    )}
+
+                    {/* IMAGE PREVIEW: .jpg, .png, .webp, .gif */}
+                    {['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(
+                      (m.contentData as any).fileAttachment.extension
+                    ) && (
+                      <div className="rounded-xl overflow-hidden border border-slate-200 bg-white p-2 text-center">
+                        <img
+                          src={(m.contentData as any).fileAttachment.dataUrl}
+                          alt={(m.contentData as any).fileAttachment.name}
+                          className="max-h-72 w-auto max-w-full object-contain mx-auto rounded-lg"
+                        />
+                      </div>
+                    )}
+
+                    {/* DOKUMEN / SPREADSHEET / CSV: .pdf, .xlsx, .csv, .docx */}
+                    {['pdf', 'xlsx', 'xls', 'csv', 'docx', 'pptx'].includes(
+                      (m.contentData as any).fileAttachment.extension
+                    ) && (
+                      <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
+                        <span className="text-emerald-950 font-semibold flex items-center space-x-1.5">
+                          {['xlsx', 'xls', 'csv'].includes(
+                            (m.contentData as any).fileAttachment.extension
+                          ) ? (
+                            <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-emerald-700" />
+                          )}
+                          <span>
+                            Berkas Penunjang ({((m.contentData as any).fileAttachment.extension).toUpperCase()}): Siap dipelajari untuk aktivitas diferensiasi
+                          </span>
+                        </span>
+                        <a
+                          href={(m.contentData as any).fileAttachment.dataUrl}
+                          download={(m.contentData as any).fileAttachment.name}
+                          className="text-emerald-700 hover:text-emerald-800 font-bold underline ml-2"
+                        >
+                          Buka / Simpan
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1.5">
+            <p className="text-xs font-bold text-slate-700">
+              Belum ada materi tambahan khusus kategori {selectedStyle === 'auditory' ? 'Audio' : selectedStyle === 'visual' ? 'Visual' : 'Kinestetik'} dari guru.
+            </p>
+            <p className="text-[11px] text-slate-400 max-w-lg mx-auto">
+              Ketika guru menambahkan Materi PAI Baru dan memilih kategori{' '}
+              <strong>{selectedStyle === 'auditory' ? 'Audio' : selectedStyle === 'visual' ? 'Visual' : 'Kinestetik'}</strong>,
+              materi tersebut akan otomatis tampil di tab ini.
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* ADAPTIVE CONTENT CARD */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">

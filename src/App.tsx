@@ -326,6 +326,48 @@ export default function App() {
       .catch((err) => console.warn('Sync student to Firestore error:', err));
   };
 
+  const handleAddMultipleStudents = (newStudentsList: User[]) => {
+    if (!newStudentsList || newStudentsList.length === 0) return;
+
+    const newProgList: StudentProgress[] = newStudentsList.map((s) => ({
+      studentId: s.id,
+      studentName: s.name,
+      diagnostikScore: 75,
+      formatifScore: 0,
+      tugasScore: 0,
+      sumatifScore: 0,
+      finalScore: 75,
+      grade: 'B',
+      engagementPercent: 0,
+      completedMaterialsCount: 0,
+      submittedTask: false,
+      submittedReflection: false,
+      status: 'Dalam Proses',
+    }));
+
+    setStudents((prev) => {
+      const updated = [...newStudentsList, ...prev];
+      localStorage.setItem('mpd_students', JSON.stringify(updated));
+      return updated;
+    });
+
+    setProgressList((prev) => {
+      const updated = [...newProgList, ...prev];
+      localStorage.setItem('mpd_progress', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Save batch to Firestore
+    Promise.all([
+      ...newStudentsList.map((s) => saveStudentToFirestore(s)),
+      ...newProgList.map((p) => saveProgressToFirestore(p)),
+    ])
+      .then(() =>
+        showToast(`${newStudentsList.length} siswa berhasil diimpor & disimpan ke database Firebase ✓`, 'success')
+      )
+      .catch((err) => console.warn('Sync bulk students to Firestore error:', err));
+  };
+
   const handleDeleteStudent = (studentId: string) => {
     setStudents((prev) => {
       const updated = prev.filter((s) => s.id !== studentId);
@@ -596,6 +638,7 @@ export default function App() {
               onResetPassword={handleResetPassword}
               onUpdateStudentLearningStyle={handleUpdateStudentLearningStyle}
               onAddStudent={handleAddStudent}
+              onAddMultipleStudents={handleAddMultipleStudents}
               onDeleteStudent={handleDeleteStudent}
               onNavigateToPrintAccounts={() => handleNavigate('print-accounts')}
               onNavigateToPrintGrades={() => handleNavigate('print-grades')}
