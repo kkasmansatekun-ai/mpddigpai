@@ -115,12 +115,23 @@ export interface AssessmentQuestion {
   explanation: string;
 }
 
+export interface ReflectionPrompt {
+  id: string;
+  title: string;
+  question: string;
+  category: 'Pemahaman' | 'Tantangan' | 'Komitmen' | 'Refleksi Harian';
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface ReflectionEntry {
   id: string;
   studentName: string;
+  authorRole?: Role;
   understandingLevel: 'Sangat Paham' | 'Paham' | 'Cukup Paham' | 'Masih Bingung';
   biggestChallenge: string;
   mostHelpfulActivity: string;
   actionCommitment: string;
+  promptAnswers?: { promptId: string; title: string; answer: string }[];
   date: string;
 }

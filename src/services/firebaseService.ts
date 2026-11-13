@@ -7,7 +7,15 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { SchoolClass, User, StudentProgress, LearningStyle } from '../types';
+import {
+  SchoolClass,
+  User,
+  StudentProgress,
+  LearningStyle,
+  AssessmentQuestion,
+  ReflectionEntry,
+  ReflectionPrompt,
+} from '../types';
 
 export interface FirebaseSyncStatus {
   connected: boolean;
@@ -147,6 +155,14 @@ export async function saveProgressToFirestore(progress: StudentProgress): Promis
   }
 }
 
+export async function deleteProgressFromFirestore(studentId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, PROGRESS_COLLECTION, studentId));
+  } catch (error) {
+    console.warn('Gagal menghapus progres siswa dari Firestore:', error);
+  }
+}
+
 // 4. SEED INITIAL DATA TO FIRESTORE (One-Click Migration)
 export async function seedAllDataToFirestore(
   classes: SchoolClass[],
@@ -256,6 +272,100 @@ export async function saveResourceToFirestore(res: any): Promise<void> {
     await setDoc(doc(db, RESOURCES_COLLECTION, res.id), res);
   } catch (e) {
     console.warn('Gagal menyimpan sumber belajar ke Firestore:', e);
+  }
+}
+
+// 7. ASESMEN TAMBAHAN (CUSTOM ASSESSMENTS)
+const CUSTOM_ASSESSMENTS_COLLECTION = 'custom_assessments';
+
+export async function getCustomAssessmentsFromFirestore(): Promise<AssessmentQuestion[] | null> {
+  try {
+    const snap = await getDocs(collection(db, CUSTOM_ASSESSMENTS_COLLECTION));
+    if (snap.empty) return null;
+    const list: AssessmentQuestion[] = [];
+    snap.forEach((d) => list.push(d.data() as AssessmentQuestion));
+    return list;
+  } catch (e) {
+    console.warn('Gagal memuat asesmen tambahan dari Firestore:', e);
+    return null;
+  }
+}
+
+export async function saveCustomAssessmentToFirestore(question: AssessmentQuestion): Promise<void> {
+  try {
+    await setDoc(doc(db, CUSTOM_ASSESSMENTS_COLLECTION, String(question.id)), question);
+  } catch (e) {
+    console.warn('Gagal menyimpan asesmen tambahan ke Firestore:', e);
+  }
+}
+
+export async function deleteCustomAssessmentFromFirestore(questionId: number): Promise<void> {
+  try {
+    await deleteDoc(doc(db, CUSTOM_ASSESSMENTS_COLLECTION, String(questionId)));
+  } catch (e) {
+    console.warn('Gagal menghapus asesmen tambahan dari Firestore:', e);
+  }
+}
+
+// 8. REFLEKSI & TOPIK REFLEKSI GURU
+const REFLECTIONS_COLLECTION = 'reflections';
+const REFLECTION_PROMPTS_COLLECTION = 'reflection_prompts';
+
+export async function getReflectionsFromFirestore(): Promise<ReflectionEntry[] | null> {
+  try {
+    const snap = await getDocs(collection(db, REFLECTIONS_COLLECTION));
+    if (snap.empty) return null;
+    const list: ReflectionEntry[] = [];
+    snap.forEach((d) => list.push(d.data() as ReflectionEntry));
+    return list;
+  } catch (e) {
+    console.warn('Gagal memuat refleksi dari Firestore:', e);
+    return null;
+  }
+}
+
+export async function saveReflectionToFirestore(entry: ReflectionEntry): Promise<void> {
+  try {
+    await setDoc(doc(db, REFLECTIONS_COLLECTION, entry.id), entry);
+  } catch (e) {
+    console.warn('Gagal menyimpan refleksi ke Firestore:', e);
+  }
+}
+
+export async function deleteReflectionFromFirestore(entryId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, REFLECTIONS_COLLECTION, entryId));
+  } catch (e) {
+    console.warn('Gagal menghapus refleksi dari Firestore:', e);
+  }
+}
+
+export async function getReflectionPromptsFromFirestore(): Promise<ReflectionPrompt[] | null> {
+  try {
+    const snap = await getDocs(collection(db, REFLECTION_PROMPTS_COLLECTION));
+    if (snap.empty) return null;
+    const list: ReflectionPrompt[] = [];
+    snap.forEach((d) => list.push(d.data() as ReflectionPrompt));
+    return list;
+  } catch (e) {
+    console.warn('Gagal memuat topik refleksi dari Firestore:', e);
+    return null;
+  }
+}
+
+export async function saveReflectionPromptToFirestore(prompt: ReflectionPrompt): Promise<void> {
+  try {
+    await setDoc(doc(db, REFLECTION_PROMPTS_COLLECTION, prompt.id), prompt);
+  } catch (e) {
+    console.warn('Gagal menyimpan topik refleksi ke Firestore:', e);
+  }
+}
+
+export async function deleteReflectionPromptFromFirestore(promptId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, REFLECTION_PROMPTS_COLLECTION, promptId));
+  } catch (e) {
+    console.warn('Gagal menghapus topik refleksi dari Firestore:', e);
   }
 }
 

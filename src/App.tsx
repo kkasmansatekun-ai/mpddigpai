@@ -14,6 +14,7 @@ import {
   updateStudentPasswordInFirestore,
   updateStudentLearningStyleInFirestore,
   saveProgressToFirestore,
+  deleteProgressFromFirestore,
   seedAllDataToFirestore,
   FirebaseSyncStatus,
 } from './services/firebaseService';
@@ -239,8 +240,9 @@ export default function App() {
     return await seedAllDataToFirestore(classes, students, progressList);
   };
 
-  // Class selection handler
+  // Class selection handler (hanya Guru / Admin yang dapat mengganti kelas aktif)
   const handleSelectClass = (cls: SchoolClass) => {
+    if (currentUser.role === 'student') return;
     setActiveClass(cls);
     localStorage.setItem('mpd_active_class_id', cls.id);
   };
@@ -253,6 +255,17 @@ export default function App() {
     setCurrentUser(user);
     setIsAuthenticated(true);
     localStorage.setItem('mpd_auth_user', JSON.stringify(user));
+    if (user.role === 'student') {
+      const studentCls = classes.find(
+        (c) =>
+          (user.classId && c.id === user.classId) ||
+          (user.className && c.name.toUpperCase() === user.className.toUpperCase())
+      );
+      if (studentCls) {
+        setActiveClass(studentCls);
+        localStorage.setItem('mpd_active_class_id', studentCls.id);
+      }
+    }
     setActivePage('home');
     localStorage.setItem('mpd_active_page', 'home');
   };
@@ -407,7 +420,10 @@ export default function App() {
       return updated;
     });
 
-    deleteStudentFromFirestore(studentId)
+    Promise.all([
+      deleteStudentFromFirestore(studentId),
+      deleteProgressFromFirestore(studentId),
+    ])
       .then(() => showToast('Data siswa berhasil dihapus dari database Firebase', 'info'))
       .catch((err) => console.warn('Delete student from Firestore error:', err));
   };

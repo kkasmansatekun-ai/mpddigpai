@@ -95,45 +95,47 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
         {/* Left: Dynamic Class Badge with Switcher & Active Topic */}
         <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-start">
           <div className="flex items-center space-x-2">
-            {/* Dynamic Class Selector Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowClassDropdown(!showClassDropdown)}
-                className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-950 border border-emerald-300 flex items-center space-x-1.5 hover:bg-emerald-200 transition"
-                title="Klik untuk memilih kelas aktif dinamis"
-              >
-                <Building2 className="w-3 h-3 text-emerald-700" />
-                <span>{activeClass.name}</span>
-                <span className="text-[10px] text-emerald-700 font-semibold">({activeClass.phase})</span>
-                <ChevronDown className="w-3 h-3 text-emerald-700" />
-              </button>
+            {/* Dynamic Class Selector Dropdown (Hanya untuk Akun Guru / Admin) */}
+            {currentUser.role !== 'student' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowClassDropdown(!showClassDropdown)}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-950 border border-emerald-300 flex items-center space-x-1.5 hover:bg-emerald-200 transition"
+                  title="Klik untuk memilih kelas aktif dinamis"
+                >
+                  <Building2 className="w-3 h-3 text-emerald-700" />
+                  <span>{activeClass.name}</span>
+                  <span className="text-[10px] text-emerald-700 font-semibold">({activeClass.phase})</span>
+                  <ChevronDown className="w-3 h-3 text-emerald-700" />
+                </button>
 
-              {/* Class Dropdown */}
-              {showClassDropdown && (
-                <div className="absolute left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 animate-fade-in">
-                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
-                    Pilih Kelas Aktif
+                {/* Class Dropdown */}
+                {showClassDropdown && (
+                  <div className="absolute left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 animate-fade-in">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
+                      Pilih Kelas Aktif
+                    </div>
+                    {allClasses.map((cls) => (
+                      <button
+                        key={cls.id}
+                        onClick={() => {
+                          onSelectClass(cls);
+                          setShowClassDropdown(false);
+                        }}
+                        className={`w-full text-left p-2 rounded-xl text-xs flex items-center justify-between transition ${
+                          activeClass.id === cls.id
+                            ? 'bg-emerald-50 text-emerald-900 font-bold'
+                            : 'hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <span>{cls.name}</span>
+                        <span className="text-[10px] text-slate-400">{cls.phase}</span>
+                      </button>
+                    ))}
                   </div>
-                  {allClasses.map((cls) => (
-                    <button
-                      key={cls.id}
-                      onClick={() => {
-                        onSelectClass(cls);
-                        setShowClassDropdown(false);
-                      }}
-                      className={`w-full text-left p-2 rounded-xl text-xs flex items-center justify-between transition ${
-                        activeClass.id === cls.id
-                          ? 'bg-emerald-50 text-emerald-900 font-bold'
-                          : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <span>{cls.name}</span>
-                      <span className="text-[10px] text-slate-400">{cls.phase}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             <span className="text-xs text-slate-500 hidden md:inline font-medium">
               Topik: <strong className="text-slate-800">Adab Bersosial Media dalam Islam</strong>
