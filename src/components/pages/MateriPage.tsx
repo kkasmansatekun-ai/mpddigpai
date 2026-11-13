@@ -36,11 +36,18 @@ import {
   File,
   Music,
   Film,
+  Loader2,
+  Edit3,
+  AlertCircle,
 } from 'lucide-react';
 import {
-  saveMaterialToFirestore,
-  getMaterialsFromFirestore,
-} from '../../services/firebaseService';
+  saveMaterialWithMedia,
+  loadAllMaterialsWithMedia,
+  deleteMaterialWithMedia,
+  saveMaterialsToLocalCache,
+  getMaterialsFromLocalCache,
+} from '../../services/mediaStorageService';
+import { MediaDocumentViewer } from '../common/MediaDocumentViewer';
 
 interface MateriPageProps {
   activeClass?: SchoolClass;
@@ -59,7 +66,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
   const studentGrade = detectGradeLevel(currentUser?.className || activeClass?.name, activeClass?.phase);
   const activeClassGrade = detectGradeLevel(activeClass?.name, activeClass?.phase);
 
-  const [activeTab, setActiveTab] = useState<string>('teks');
+  const [activeTab, setActiveTab] = useState<string>('mat-teks');
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [audioProgress, setAudioProgress] = useState<number>(25);
@@ -76,21 +83,15 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<'all' | 'X' | 'XI' | 'XII'>(activeClassGrade);
 
   // Custom materials added by teacher
-  const [customMaterials, setCustomMaterials] = useState<MaterialItem[]>(() => {
-    const saved = localStorage.getItem('mpd_custom_materials');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [];
-  });
+  const [customMaterials, setCustomMaterials] = useState<MaterialItem[]>(() =>
+    getMaterialsFromLocalCache()
+  );
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [addFeedback, setAddFeedback] = useState<string | null>(null);
 
-  // Form states for new material
+  // Form states for new/edited material
   const [newTitle, setNewTitle] = useState('');
   const [newSubtitle, setNewSubtitle] = useState('');
   const [newType, setNewType] = useState('teks');
@@ -105,15 +106,35 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     type: string;
     extension: string;
     dataUrl: string;
+    isChunked?: boolean;
+    chunkCount?: number;
   } | null>(null);
+
+  // Upload & Save loading states (specifically visible for Admin/Guru uploading Video/PDF/Word)
+  const [isReadingFile, setIsReadingFile] = useState(false);
+  const [fileReadProgress, setFileReadProgress] = useState(0);
+  const [isSavingMaterial, setIsSavingMaterial] = useState(false);
+  const [saveProgress, setSaveProgress] = useState(0);
+  const [saveProgressLabel, setSaveProgressLabel] = useState('');
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper untuk membaca upload file berbagai format (audio, video, visual, pdf, excel, dll)
+  // Helper untuk membaca upload file berbagai format (video, word, pdf, audio, visual, excel)
   const handleFileUploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setFileUploadError(null);
 
-    const ext = file.name.slice(((file.name.lastIndexOf('.') - 1) >>> 0) + 2).toLowerCase();
+    // Maksimal 25 MB
+    if (file.size > 25 * 1024 * 1024) {
+      setFileUploadError('Ukuran berkas melebihi batas maksimal 25 MB. Pilih berkas yang lebih ringkas.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const ext =
+      file.name.slice(((file.name.lastIndexOf('.') - 1) >>> 0) + 2).toLowerCase() || 'file';
     const sizeKb = Math.round(file.size / 1024);
     const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
 
@@ -130,16 +151,32 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
       setNewCategory('kinesthetic');
       setNewType('kasus');
-    } else if (['mp4', 'webm', 'mov'].includes(ext)) {
+    } else if (['mp4', 'webm', 'mov', 'mkv', 'm4v'].includes(ext)) {
+      setNewCategory('visual');
       setNewType('video');
     }
 
+    setIsReadingFile(true);
+    setFileReadProgress(15);
+
     const reader = new FileReader();
+    reader.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const pct = Math.min(95, Math.round((ev.loaded / ev.total) * 100));
+        setFileReadProgress(pct);
+      }
+    };
+    reader.onerror = () => {
+      setIsReadingFile(false);
+      setFileReadProgress(0);
+      setFileUploadError('Gagal membaca berkas dari perangkat. Silakan coba lagi.');
+    };
     reader.onload = () => {
+      setFileReadProgress(100);
       setUploadedFile({
         name: file.name,
         size: sizeStr,
-        type: file.type || 'application/octet-stream',
+        type: file.type || (ext === 'mp4' ? 'video/mp4' : 'application/octet-stream'),
         extension: ext,
         dataUrl: reader.result as string,
       });
@@ -148,6 +185,9 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
         setNewTitle(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
       }
+      setTimeout(() => {
+        setIsReadingFile(false);
+      }, 250);
     };
     reader.readAsDataURL(file);
   };
@@ -156,29 +196,26 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
   useEffect(() => {
     if (activeClass) {
       const detected = detectGradeLevel(activeClass.name, activeClass.phase);
-      setNewGradeLevel(detected);
+      if (!editingMaterialId) {
+        setNewGradeLevel(detected);
+      }
       if (!isStudent) {
         setSelectedGradeFilter(detected);
       }
     }
-  }, [activeClass?.id, isStudent]);
+  }, [activeClass?.id, isStudent, editingMaterialId]);
 
-  // Load from Firestore
+  // Load from Firestore + IndexedDB (including chunked videos/PDF/Word)
   useEffect(() => {
-    getMaterialsFromFirestore().then((cloudMats) => {
-      if (cloudMats && cloudMats.length > 0) {
-        setCustomMaterials((prev) => {
-          const map = new Map<string, MaterialItem>();
-          cloudMats.forEach((m: any) => map.set(m.id, m));
-          prev.forEach((m) => {
-            if (!map.has(m.id)) map.set(m.id, m);
-          });
-          const merged = Array.from(map.values());
-          localStorage.setItem('mpd_custom_materials', JSON.stringify(merged));
-          return merged;
-        });
+    let cancelled = false;
+    loadAllMaterialsWithMedia().then((hydratedMaterials) => {
+      if (!cancelled && hydratedMaterials.length > 0) {
+        setCustomMaterials(hydratedMaterials);
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const mediaTypes = [
@@ -213,26 +250,77 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     return itemGrade === selectedGradeFilter || itemGrade === 'all';
   });
 
-  // Keep activeTab pointing to an available material
+  // Keep activeTab pointing to an available material by exact ID
   useEffect(() => {
     if (displayedMaterials.length > 0) {
-      const exists = displayedMaterials.some((m) => m.id === activeTab || m.type === activeTab);
+      const exists = displayedMaterials.some((m) => m.id === activeTab);
       if (!exists) {
-        setActiveTab(displayedMaterials[0].id || displayedMaterials[0].type);
+        setActiveTab(displayedMaterials[0].id);
       }
     }
   }, [displayedMaterials, activeTab]);
 
   const currentMaterial =
-    displayedMaterials.find((m) => m.id === activeTab || m.type === activeTab) ||
+    displayedMaterials.find((m) => m.id === activeTab) ||
     displayedMaterials[0] ||
     null;
 
-  const handleAddMaterialSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) return;
+  const isCustomMaterial = Boolean((currentMaterial as any)?.contentData?.isCustom);
 
-    const newId = `custom-mat-${Date.now()}`;
+  const openAddModal = (presetGrade?: 'X' | 'XI' | 'XII' | 'all') => {
+    if (isStudent) return;
+    setEditingMaterialId(null);
+    setNewTitle('');
+    setNewSubtitle('');
+    setNewType('teks');
+    setNewCategory('visual');
+    setNewSummary('');
+    setNewContentText('');
+    setNewMediaUrl('');
+    setNewGradeLevel(presetGrade || activeClassGrade);
+    setUploadedFile(null);
+    setFileUploadError(null);
+    setIsReadingFile(false);
+    setSaveProgress(0);
+    setSaveProgressLabel('');
+    setShowAddModal(true);
+  };
+
+  const openEditModal = (mat: MaterialItem) => {
+    if (isStudent) return;
+    const cat =
+      mat.learningStyleCategory ||
+      (mat.contentData as any)?.learningStyleCategory ||
+      'visual';
+    setEditingMaterialId(mat.id);
+    setNewTitle(mat.title || '');
+    setNewSubtitle(mat.subtitle || '');
+    setNewType(mat.type || 'teks');
+    setNewCategory(
+      cat === 'auditory' || cat === 'kinesthetic' || cat === 'visual' ? cat : 'visual'
+    );
+    setNewSummary(mat.summary || '');
+    setNewContentText((mat.contentData as any)?.text || '');
+    setNewMediaUrl((mat.contentData as any)?.mediaUrl || '');
+    setNewGradeLevel((mat.gradeLevel as any) || activeClassGrade);
+    setUploadedFile((mat.contentData as any)?.fileAttachment || null);
+    setFileUploadError(null);
+    setIsReadingFile(false);
+    setSaveProgress(0);
+    setSaveProgressLabel('');
+    setShowAddModal(true);
+  };
+
+  const handleAddMaterialSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isStudent || !newTitle.trim() || isSavingMaterial || isReadingFile) return;
+
+    setIsSavingMaterial(true);
+    setSaveProgress(10);
+    setSaveProgressLabel('Mempersiapkan materi & media...');
+
+    const isEditing = Boolean(editingMaterialId);
+    const targetId = editingMaterialId || `custom-mat-${Date.now()}`;
     const categoryLabel =
       newCategory === 'auditory'
         ? 'Audio'
@@ -240,20 +328,22 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         ? 'Kinestetik'
         : 'Visual';
 
-    const newItem: MaterialItem = {
-      id: newId,
+    const targetItem: MaterialItem = {
+      id: targetId,
       type: newType as any,
-      title: newTitle,
-      subtitle: newSubtitle || `Materi PAI Kelas ${newGradeLevel === 'all' ? 'X / XI / XII' : newGradeLevel}`,
+      title: newTitle.trim(),
+      subtitle:
+        newSubtitle.trim() ||
+        `Materi PAI Kelas ${newGradeLevel === 'all' ? 'X / XI / XII' : newGradeLevel}`,
       badge: `Kategori: ${categoryLabel}`,
       duration: newCategory === 'auditory' ? '10 Menit Audio' : '10 Menit Baca',
-      summary: newSummary || 'Ringkasan materi pembelajaran PAI.',
+      summary: newSummary.trim() || 'Ringkasan materi pembelajaran PAI.',
       gradeLevel: newGradeLevel,
       learningStyleCategory: newCategory,
       contentData: {
         isCustom: true,
         text: newContentText,
-        mediaUrl: newMediaUrl,
+        mediaUrl: newMediaUrl.trim(),
         fileAttachment: uploadedFile || undefined,
         learningStyleCategory: newCategory,
         categoryName: categoryLabel,
@@ -265,46 +355,78 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
       },
     };
 
-    const updated = [newItem, ...customMaterials];
-    setCustomMaterials(updated);
-    localStorage.setItem('mpd_custom_materials', JSON.stringify(updated));
+    try {
+      const savedItem = await saveMaterialWithMedia(targetItem, (pct, label) => {
+        setSaveProgress(pct);
+        setSaveProgressLabel(label);
+      });
 
-    // Save to Firestore
-    saveMaterialToFirestore(newItem).catch(console.warn);
+      const updated = isEditing
+        ? customMaterials.map((m) => (m.id === targetId ? savedItem : m))
+        : [savedItem, ...customMaterials];
 
-    // If teacher added for a specific grade, switch filter to that grade so they immediately see it
-    if (!isStudent && newGradeLevel !== 'all') {
-      setSelectedGradeFilter(newGradeLevel);
+      setCustomMaterials(updated);
+      saveMaterialsToLocalCache(updated);
+
+      if (!isStudent && newGradeLevel !== 'all') {
+        setSelectedGradeFilter(newGradeLevel);
+      }
+
+      setActiveTab(targetId);
+      setShowAddModal(false);
+      setEditingMaterialId(null);
+      setNewTitle('');
+      setNewSubtitle('');
+      setNewSummary('');
+      setNewContentText('');
+      setNewMediaUrl('');
+      setUploadedFile(null);
+
+      setAddFeedback(
+        isEditing
+          ? `Materi "${savedItem.title}" berhasil diperbarui & disinkronkan ke akun siswa!`
+          : `Materi "${savedItem.title}" (Kategori: ${categoryLabel}) berhasil disimpan ke cloud & langsung tampil di akun siswa (Materi PAI & Aktivitas Pembelajaran tab Gaya ${
+              categoryLabel === 'Audio'
+                ? 'AUDITORI'
+                : categoryLabel === 'Visual'
+                ? 'VISUAL'
+                : 'KINESTETIK'
+            })!`
+      );
+      setTimeout(() => setAddFeedback(null), 5500);
+    } catch (err: any) {
+      console.warn('Save material warning:', err);
+      // Fallback: still keep locally in IndexedDB + state so current session works
+      const updated = isEditing
+        ? customMaterials.map((m) => (m.id === targetId ? targetItem : m))
+        : [targetItem, ...customMaterials];
+      setCustomMaterials(updated);
+      saveMaterialsToLocalCache(updated);
+      setActiveTab(targetId);
+      setShowAddModal(false);
+      setEditingMaterialId(null);
+      setAddFeedback(
+        `Materi "${targetItem.title}" tersimpan secara lokal (sinkronisasi cloud tertunda).`
+      );
+      setTimeout(() => setAddFeedback(null), 5000);
+    } finally {
+      setIsSavingMaterial(false);
+      setSaveProgress(0);
+      setSaveProgressLabel('');
     }
-
-    // Reset & activate
-    setActiveTab(newId);
-    setShowAddModal(false);
-    setNewTitle('');
-    setNewSubtitle('');
-    setNewSummary('');
-    setNewContentText('');
-    setNewMediaUrl('');
-    setUploadedFile(null);
-
-    setAddFeedback(
-      `Materi "${newItem.title}" (Kategori: ${categoryLabel}) berhasil disimpan ke database & otomatis tersedia di menu Aktivitas Belajar tab Gaya ${
-        categoryLabel === 'Audio'
-          ? 'AUDITORI'
-          : categoryLabel === 'Visual'
-          ? 'VISUAL'
-          : 'KINESTETIK'
-      }!`
-    );
-    setTimeout(() => setAddFeedback(null), 5000);
   };
 
-  const handleDeleteCustomMaterial = (matId: string) => {
+  const handleDeleteCustomMaterial = async (matId: string) => {
+    if (isStudent) return;
+    const targetMat = customMaterials.find((m) => m.id === matId);
     const updated = customMaterials.filter((m) => m.id !== matId);
     setCustomMaterials(updated);
-    localStorage.setItem('mpd_custom_materials', JSON.stringify(updated));
-    setActiveTab('teks');
-    setAddFeedback('Materi tambahan berhasil dihapus.');
+    saveMaterialsToLocalCache(updated);
+    setActiveTab('mat-teks');
+    if (targetMat) {
+      await deleteMaterialWithMedia(targetMat);
+    }
+    setAddFeedback('Materi tambahan berhasil dihapus dari database & akun siswa.');
     setTimeout(() => setAddFeedback(null), 4000);
   };
 
@@ -348,16 +470,18 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
             </p>
           </div>
 
-          {/* TOMBOL "TAMBAH MATERI" */}
-          <div className="shrink-0">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center space-x-2 shadow-xs transition hover:scale-102 cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 text-emerald-200" />
-              <span>Tambah Materi</span>
-            </button>
-          </div>
+          {/* TOMBOL "TAMBAH MATERI" (HANYA TAMPIL PADA AKUN ADMIN / GURU) */}
+          {!isStudent && (
+            <div className="shrink-0">
+              <button
+                onClick={() => openAddModal()}
+                className="px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center space-x-2 shadow-xs transition hover:scale-102 cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4 text-emerald-200" />
+                <span>Tambah Materi</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* GRADE FILTER BAR: GURU VS SISWA */}
@@ -432,8 +556,8 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         {displayedMaterials.length > 0 ? (
           <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
             {displayedMaterials.map((mat) => {
-              const isActive = activeTab === mat.id || activeTab === mat.type;
-              const isCustom = (mat as any)?.contentData?.isCustom;
+              const isActive = currentMaterial?.id === mat.id;
+              const isCustom = Boolean((mat as any)?.contentData?.isCustom);
               const iconObj = mediaTypes.find((t) => t.id === mat.type);
 
               return (
@@ -494,12 +618,9 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
           </div>
           {!isStudent && (
             <button
-              onClick={() => {
-                if (selectedGradeFilter !== 'all') {
-                  setNewGradeLevel(selectedGradeFilter);
-                }
-                setShowAddModal(true);
-              }}
+              onClick={() =>
+                openAddModal(selectedGradeFilter !== 'all' ? selectedGradeFilter : 'X')
+              }
               className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center space-x-1.5 shadow-sm transition"
             >
               <PlusCircle className="w-4 h-4" />
@@ -528,12 +649,16 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                     ? 'Semua Tingkat (X, XI, XII)'
                     : `Tingkat: Kelas ${currentMaterial.gradeLevel || 'X'}`}
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
-                  {currentMaterial.badge}
-                </span>
-                <span className="text-xs text-slate-400 font-medium">
-                  {currentMaterial.duration}
-                </span>
+                {currentMaterial.badge && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
+                    {currentMaterial.badge}
+                  </span>
+                )}
+                {currentMaterial.duration && (
+                  <span className="text-xs text-slate-400 font-medium">
+                    {currentMaterial.duration}
+                  </span>
+                )}
               </div>
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
                 {currentMaterial.title}
@@ -543,7 +668,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
           </div>
 
         {/* TAB 1: TEKS & DALIL */}
-        {activeTab === 'teks' && (
+        {!isCustomMaterial && currentMaterial.type === 'teks' && currentMaterial.contentData?.surah && (
           <div className="space-y-6">
             {/* Ayat QS. Al-Hujurat: 6 */}
             <div className="p-6 rounded-2xl bg-emerald-50/80 border border-emerald-200 space-y-3">
@@ -608,7 +733,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 2: GAMBAR ILUSTRASI */}
-        {activeTab === 'gambar' && (
+        {!isCustomMaterial && currentMaterial.type === 'gambar' && Array.isArray(currentMaterial.contentData) && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {currentMaterial.contentData.map((img: any, idx: number) => (
               <div
@@ -638,7 +763,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 3: INFOGRAFIS RINGKAS */}
-        {activeTab === 'infografis' && (
+        {!isCustomMaterial && currentMaterial.type === 'infografis' && currentMaterial.contentData?.steps && (
           <div className="space-y-6">
             <div className="bg-emerald-950 text-white p-6 rounded-2xl flex items-center justify-between">
               <div>
@@ -672,7 +797,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 4: VIDEO PENJELASAN */}
-        {activeTab === 'video' && (
+        {!isCustomMaterial && currentMaterial.type === 'video' && currentMaterial.contentData?.videoTitle && (
           <div className="space-y-6">
             <div className="bg-slate-900 rounded-3xl overflow-hidden aspect-video relative flex flex-col items-center justify-center text-white p-6 shadow-xl border border-slate-800">
               <div className="w-16 h-16 rounded-full bg-emerald-500/90 hover:bg-emerald-400 flex items-center justify-center cursor-pointer shadow-lg transition hover:scale-110">
@@ -725,7 +850,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 5: AUDIO PODCAST */}
-        {activeTab === 'audio' && (
+        {!isCustomMaterial && currentMaterial.type === 'audio' && currentMaterial.contentData?.audioTitle && (
           <div className="space-y-6">
             {/* Audio Player Component */}
             <div className="p-6 rounded-3xl bg-emerald-950 text-white space-y-5 shadow-lg border border-emerald-900">
@@ -783,7 +908,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 6: PRESENTASI INTERAKTIF */}
-        {activeTab === 'presentasi' && (
+        {!isCustomMaterial && currentMaterial.type === 'presentasi' && currentMaterial.contentData?.slides && (
           <div className="space-y-4">
             {/* Slide Viewer */}
             <div className="bg-gradient-to-br from-slate-900 to-emerald-950 text-white rounded-3xl p-8 sm:p-12 min-h-[360px] flex flex-col justify-between shadow-xl border border-slate-800">
@@ -851,7 +976,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 7: CONTOH KASUS */}
-        {activeTab === 'kasus' && (
+        {!isCustomMaterial && currentMaterial.type === 'kasus' && Array.isArray(currentMaterial.contentData) && (
           <div className="space-y-6">
             {currentMaterial.contentData.map((kasus: any) => (
               <div
@@ -888,7 +1013,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 8: SUMBER BACAAN / FATWA */}
-        {activeTab === 'bacaan' && (
+        {!isCustomMaterial && currentMaterial.type === 'bacaan' && currentMaterial.contentData?.ketentuanHukum && (
           <div className="space-y-6">
             <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200">
               <h3 className="font-bold text-base text-emerald-950 mb-1">
@@ -922,7 +1047,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* TAB 9: CHECKLIST INTERAKTIF */}
-        {activeTab === 'interaktif' && (
+        {!isCustomMaterial && currentMaterial.type === 'interaktif' && currentMaterial.contentData?.checklistItems && (
           <div className="space-y-6">
             {/* Score Display */}
             <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-800 to-teal-800 text-white flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -974,21 +1099,34 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
         )}
 
         {/* CUSTOM MATERIAL DISPLAY */}
-        {(currentMaterial as any)?.contentData?.isCustom && (
+        {isCustomMaterial && (
           <div className="space-y-5 animate-fade-in">
             <div className="p-6 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-full">
                   Materi Tambahan Guru
                 </span>
-                <button
-                  onClick={() => handleDeleteCustomMaterial(currentMaterial.id)}
-                  className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center space-x-1 border border-rose-200 transition"
-                  title="Hapus materi ini"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Hapus Materi</span>
-                </button>
+                {/* TOMBOL EDIT & HAPUS HANYA UNTUK AKUN ADMIN / GURU */}
+                {!isStudent && (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => openEditModal(currentMaterial)}
+                      className="px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center space-x-1 border border-blue-200 transition cursor-pointer"
+                      title="Edit materi ini"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCustomMaterial(currentMaterial.id)}
+                      className="px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center space-x-1 border border-rose-200 transition cursor-pointer"
+                      title="Hapus materi ini"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -1014,105 +1152,22 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
               </div>
             )}
 
-            {/* Berkas Materi Pembelajaran (Upload File Multi-Format) */}
-            {(currentMaterial as any).contentData?.fileAttachment && (
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px] uppercase">
-                      {(currentMaterial as any).contentData.fileAttachment.extension}
-                    </span>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">
-                        {(currentMaterial as any).contentData.fileAttachment.name}
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-medium">
-                        Berkas Penunjang Materi • {(currentMaterial as any).contentData.fileAttachment.size}
-                      </p>
-                    </div>
-                  </div>
-                  <a
-                    href={(currentMaterial as any).contentData.fileAttachment.dataUrl}
-                    download={(currentMaterial as any).contentData.fileAttachment.name}
-                    className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center space-x-1.5 shadow-xs transition shrink-0"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Unduh Berkas</span>
-                  </a>
-                </div>
-
-                {/* AUDIO PLAYER: .mp3, .wav, .m4a, .ogg */}
-                {['mp3', 'wav', 'm4a', 'ogg', 'aac'].includes(
-                  (currentMaterial as any).contentData.fileAttachment.extension
-                ) && (
-                  <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-1.5">
-                    <span className="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
-                      <Volume2 className="w-4 h-4 text-blue-700" />
-                      <span>Pemutar Audio Kajian / Podcast PAI:</span>
-                    </span>
-                    <audio
-                      controls
-                      className="w-full h-10 rounded-lg outline-hidden"
-                      src={(currentMaterial as any).contentData.fileAttachment.dataUrl}
-                    />
-                  </div>
-                )}
-
-                {/* VIDEO PLAYER: .mp4, .webm, .mov */}
-                {['mp4', 'webm', 'mov'].includes(
-                  (currentMaterial as any).contentData.fileAttachment.extension
-                ) && (
-                  <div className="rounded-xl overflow-hidden border border-slate-300 bg-black">
-                    <video
-                      controls
-                      className="w-full max-h-80 object-contain mx-auto"
-                      src={(currentMaterial as any).contentData.fileAttachment.dataUrl}
-                    />
-                  </div>
-                )}
-
-                {/* IMAGE PREVIEW: .jpg, .png, .webp, .gif */}
-                {['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(
-                  (currentMaterial as any).contentData.fileAttachment.extension
-                ) && (
-                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-white p-2 text-center">
-                    <img
-                      src={(currentMaterial as any).contentData.fileAttachment.dataUrl}
-                      alt={(currentMaterial as any).contentData.fileAttachment.name}
-                      className="max-h-80 w-auto max-w-full object-contain mx-auto rounded-lg"
-                    />
-                  </div>
-                )}
-
-                {/* DOKUMEN / SPREADSHEET: .pdf, .xlsx, .csv, .docx */}
-                {['pdf', 'xlsx', 'xls', 'csv', 'docx', 'pptx'].includes(
-                  (currentMaterial as any).contentData.fileAttachment.extension
-                ) && (
-                  <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
-                    <span className="text-emerald-950 font-semibold flex items-center space-x-1.5">
-                      <FileText className="w-4 h-4 text-emerald-700" />
-                      <span>
-                        Dokumen/Tabel siap dipelajari ({((currentMaterial as any).contentData.fileAttachment.extension).toUpperCase()})
-                      </span>
-                    </span>
-                    <a
-                      href={(currentMaterial as any).contentData.fileAttachment.dataUrl}
-                      download={(currentMaterial as any).contentData.fileAttachment.name}
-                      className="text-emerald-800 font-bold underline hover:text-emerald-900"
-                    >
-                      Buka di Perangkat
-                    </a>
-                  </div>
-                )}
-              </div>
+            {/* PENAMPIL MEDIA & DOKUMEN MULTI-FORMAT (Video Player, PDF Viewer, MS Word Reader, Audio, Gambar, Tabel) */}
+            {((currentMaterial as any).contentData?.fileAttachment ||
+              (currentMaterial as any).contentData?.mediaUrl) && (
+              <MediaDocumentViewer
+                title={currentMaterial.title}
+                fileAttachment={(currentMaterial as any).contentData?.fileAttachment}
+                mediaUrl={(currentMaterial as any).contentData?.mediaUrl}
+              />
             )}
 
             {/* Media Link / Embedded if provided */}
             {(currentMaterial as any).contentData?.mediaUrl && (
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                <div className="flex items-center space-x-2 text-xs text-slate-700">
-                  <ExternalLink className="w-4 h-4 text-emerald-600" />
-                  <span>Tautan Media Rujukan:</span>
+                <div className="flex items-center space-x-2 text-xs text-slate-700 min-w-0">
+                  <ExternalLink className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="shrink-0">Tautan Media Rujukan:</span>
                   <span className="font-mono text-emerald-800 truncate max-w-xs sm:max-w-md">
                     {(currentMaterial as any).contentData.mediaUrl}
                   </span>
@@ -1132,8 +1187,8 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
       </div>
       )}
 
-      {/* MODAL FORM TAMBAH MATERI */}
-      {showAddModal && (
+      {/* MODAL FORM TAMBAH / EDIT MATERI (HANYA GURU / ADMIN) */}
+      {showAddModal && !isStudent && (
         <div
           role="dialog"
           aria-modal="true"
@@ -1142,12 +1197,23 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
           <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-5 border border-slate-200 shadow-2xl relative max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center space-x-2 text-emerald-800">
-                <PlusCircle className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-extrabold text-base text-slate-900">Tambah Materi PAI Baru</h3>
+                {editingMaterialId ? (
+                  <Edit3 className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <PlusCircle className="w-5 h-5 text-emerald-600" />
+                )}
+                <h3 className="font-extrabold text-base text-slate-900">
+                  {editingMaterialId ? 'Edit Materi PAI' : 'Tambah Materi PAI Baru'}
+                </h3>
               </div>
               <button
-                onClick={() => setShowAddModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition"
+                type="button"
+                disabled={isSavingMaterial}
+                onClick={() => {
+                  setShowAddModal(false);
+                  setEditingMaterialId(null);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition disabled:opacity-40"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1212,6 +1278,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                     className="w-full p-3 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
                   >
                     <option value="teks">Teks & Dalil Syar'i</option>
+                    <option value="gambar">Gambar & Ilustrasi</option>
                     <option value="video">Video Penjelasan</option>
                     <option value="audio">Kajian Audio Podcast</option>
                     <option value="infografis">Infografis & Gambar</option>
@@ -1391,25 +1458,47 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                 <div className="flex items-center justify-between">
                   <label className="font-extrabold text-xs text-emerald-950 flex items-center space-x-1.5">
                     <FileUp className="w-4 h-4 text-emerald-700" />
-                    <span>Upload Berkas Materi Pembelajaran (Multi-Format)</span>
+                    <span>Upload Berkas Video / Word / PDF / Audio (Multi-Format)</span>
                   </label>
                   <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded-md">
-                    Audio • Visual • Kinestetik
+                    Maks 25 MB
                   </span>
                 </div>
                 <p className="text-[11px] text-emerald-900/80 leading-relaxed">
-                  Unggah berkas penunjang langsung dari perangkat: <strong>.pdf, .mp3, .wav, .mp4, .csv, .xlsx, .jpg, .png, .docx</strong>, dll.
+                  Unggah berkas penunjang langsung dari perangkat: <strong>.mp4, .webm, .docx, .doc, .pdf, .mp3, .wav, .csv, .xlsx, .jpg, .png</strong>, dll.
                 </p>
 
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.mp3,.wav,.m4a,.ogg,.mp4,.webm,.csv,.xlsx,.xls,.jpg,.jpeg,.png,.webp,.gif,.docx,.pptx"
+                  accept=".pdf,.mp3,.wav,.m4a,.ogg,.aac,.mp4,.webm,.mov,.mkv,.m4v,.csv,.xlsx,.xls,.jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.pptx"
                   className="hidden"
                   onChange={handleFileUploadChange}
                 />
 
-                {!uploadedFile ? (
+                {fileUploadError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{fileUploadError}</span>
+                  </div>
+                )}
+
+                {isReadingFile ? (
+                  <div className="border-2 border-emerald-400 bg-white rounded-2xl p-4 space-y-2.5 animate-fade-in">
+                    <div className="flex items-center justify-center space-x-2 text-emerald-800">
+                      <Loader2 className="w-5 h-5 animate-spin text-emerald-700" />
+                      <span className="text-xs font-bold">
+                        Sedang memuat berkas video / dokumen... ({fileReadProgress}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-emerald-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-600 rounded-full transition-all duration-200"
+                        style={{ width: `${fileReadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : !uploadedFile ? (
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     className="border-2 border-dashed border-emerald-300 hover:border-emerald-600 rounded-2xl p-4 text-center cursor-pointer transition bg-white hover:bg-emerald-50/50 flex flex-col items-center justify-center space-y-1.5"
@@ -1419,10 +1508,10 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-800">
-                        Klik untuk Memilih Berkas dari Perangkat
+                        Klik untuk Memilih Video / MS Word / PDF / Audio
                       </p>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        Audio (.mp3, .wav) • Video (.mp4) • Dokumen (.pdf) • Gambar (.jpg, .png) • Data (.xlsx, .csv)
+                        Video (.mp4, .webm) • Word (.docx) • PDF (.pdf) • Audio (.mp3, .wav) • Gambar & Excel
                       </p>
                     </div>
                   </div>
@@ -1434,24 +1523,28 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                       </div>
                       <div className="truncate">
                         <p className="text-xs font-bold text-slate-900 truncate">{uploadedFile.name}</p>
-                        <p className="text-[10px] text-slate-500 font-medium">{uploadedFile.size} • Siap diunggah</p>
+                        <p className="text-[10px] text-emerald-700 font-semibold">
+                          ✓ {uploadedFile.size} • Siap disimpan ke Cloud & Akun Siswa
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-1 shrink-0 ml-2">
                       <button
                         type="button"
+                        disabled={isSavingMaterial}
                         onClick={() => fileInputRef.current?.click()}
-                        className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition cursor-pointer"
+                        className="px-2.5 py-1 text-[11px] rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition cursor-pointer disabled:opacity-40"
                       >
                         Ganti
                       </button>
                       <button
                         type="button"
+                        disabled={isSavingMaterial}
                         onClick={() => {
                           setUploadedFile(null);
                           if (fileInputRef.current) fileInputRef.current.value = '';
                         }}
-                        className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition cursor-pointer"
+                        className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition cursor-pointer disabled:opacity-40"
                         title="Hapus berkas"
                       >
                         <X className="w-4 h-4" />
@@ -1472,20 +1565,58 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                 />
               </div>
 
+              {/* LOADING PROGRESS BAR SAAT UPLOAD VIDEO & SIMPAN KE CLOUD */}
+              {isSavingMaterial && (
+                <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 space-y-2 animate-fade-in">
+                  <div className="flex items-center justify-between text-xs font-bold text-blue-900">
+                    <span className="flex items-center space-x-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-700" />
+                      <span>{saveProgressLabel || 'Mengunggah materi & video ke database...'}</span>
+                    </span>
+                    <span className="font-mono">{saveProgress}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-blue-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 rounded-full transition-all duration-200"
+                      style={{ width: `${saveProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition"
+                  disabled={isSavingMaterial}
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingMaterialId(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition disabled:opacity-40"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition flex items-center space-x-1.5 shadow-sm"
+                  disabled={isSavingMaterial || isReadingFile}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-500 text-white font-bold transition flex items-center space-x-1.5 shadow-sm cursor-pointer disabled:cursor-wait"
                 >
-                  <PlusCircle className="w-4 h-4" />
-                  <span>Simpan Materi ke Database</span>
+                  {isSavingMaterial ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Mengunggah ({saveProgress}%)...</span>
+                    </>
+                  ) : editingMaterialId ? (
+                    <>
+                      <Edit3 className="w-4 h-4" />
+                      <span>Simpan Perubahan Materi</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlusCircle className="w-4 h-4" />
+                      <span>Simpan Materi ke Database</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

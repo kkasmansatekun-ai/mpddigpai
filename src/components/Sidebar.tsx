@@ -166,7 +166,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Links - MURNI TANPA NOMOR ANGKA */}
         <div className="flex-1 px-2.5 py-1 space-y-3 overflow-y-auto text-xs font-medium scrollbar-thin scrollbar-thumb-emerald-800">
           
-          {/* SECTION 1: MANAJEMEN GURU/ADMIN */}
+          {/* SECTION 1: MANAJEMEN GURU/ADMIN (Hanya Tampil untuk Guru/Admin) */}
+          {currentUser.role !== 'student' && (
           <div>
             {!isCollapsed && (
               <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400/80 flex items-center justify-between">
@@ -201,9 +202,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               })}
             </div>
           </div>
+          )}
 
           {/* SECTION 2: PEMBELAJARAN SISWA & GURU (MURNI TANPA NOMOR) */}
-          <div className="pt-2 border-t border-emerald-900/80">
+          <div className={currentUser.role !== 'student' ? 'pt-2 border-t border-emerald-900/80' : ''}>
             {!isCollapsed && (
               <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">
                 Pembelajaran Siswa & Guru
@@ -247,7 +249,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          {/* Section: Quick Print & Laravel Architecture Code */}
+          {/* Section: Quick Print & Laravel Architecture Code (Hanya untuk Guru/Admin, disembunyikan dari Siswa) */}
+          {currentUser.role !== 'student' && (
           <div className="pt-2 border-t border-emerald-900/80 space-y-1.5">
             {!isCollapsed && (
               <div className="grid grid-cols-2 gap-1.5 px-1">
@@ -340,6 +343,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Bottom Section: Logout Button */}

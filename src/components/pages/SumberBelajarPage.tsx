@@ -16,6 +16,11 @@ import {
   getResourcesFromFirestore,
   saveResourceToFirestore,
 } from '../../services/firebaseService';
+import { User } from '../../types';
+
+interface SumberBelajarPageProps {
+  currentUser?: User;
+}
 
 interface ResourceItem {
   id?: string;
@@ -85,7 +90,8 @@ const INITIAL_RESOURCES: ResourceItem[] = [
   },
 ];
 
-export const SumberBelajarPage: React.FC = () => {
+export const SumberBelajarPage: React.FC<SumberBelajarPageProps> = ({ currentUser }) => {
+  const isStudent = currentUser?.role === 'student';
   const [customResources, setCustomResources] = useState<ResourceItem[]>(() => {
     const saved = localStorage.getItem('mpd_custom_resources');
     if (saved) {
@@ -200,16 +206,18 @@ export const SumberBelajarPage: React.FC = () => {
             </p>
           </div>
 
-          {/* TOMBOL "TAMBAH SUMBER BELAJAR" */}
-          <div className="shrink-0">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center space-x-2 shadow-xs transition hover:scale-102 cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 text-emerald-200" />
-              <span>Tambah Sumber Belajar</span>
-            </button>
-          </div>
+          {/* TOMBOL "TAMBAH SUMBER BELAJAR" (Hanya Guru / Admin) */}
+          {!isStudent && (
+            <div className="shrink-0">
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="px-4 py-2.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center space-x-2 shadow-xs transition hover:scale-102 cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4 text-emerald-200" />
+                <span>Tambah Sumber Belajar</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -249,7 +257,7 @@ export const SumberBelajarPage: React.FC = () => {
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
 
-              {res.isCustom && (
+              {res.isCustom && !isStudent && (
                 <button
                   onClick={() => handleDeleteCustomResource(res.id)}
                   className="text-slate-400 hover:text-rose-600 p-1 transition"

@@ -110,10 +110,36 @@ export default function App() {
     return 'home';
   });
 
+  const ADMIN_ONLY_PAGES: PageId[] = [
+    'classes-management',
+    'students-management',
+    'database-backup',
+    'print-accounts',
+    'print-grades',
+    'laravel-code',
+    'kode',
+    'kode-laravel',
+    'kode-sql',
+    'kode-firebase',
+  ];
+
   const handleNavigate = (page: PageId) => {
+    if (currentUser.role === 'student' && ADMIN_ONLY_PAGES.includes(page)) {
+      setActivePage('home');
+      localStorage.setItem('mpd_active_page', 'home');
+      return;
+    }
     setActivePage(page);
     localStorage.setItem('mpd_active_page', page);
   };
+
+  // Ensure student accounts cannot stay on restricted admin/database/code pages
+  useEffect(() => {
+    if (currentUser.role === 'student' && ADMIN_ONLY_PAGES.includes(activePage)) {
+      setActivePage('home');
+      localStorage.setItem('mpd_active_page', 'home');
+    }
+  }, [currentUser.role, activePage]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [firebaseStatus, setFirebaseStatus] = useState<FirebaseSyncStatus>({
     connected: true,
@@ -228,6 +254,7 @@ export default function App() {
     setIsAuthenticated(true);
     localStorage.setItem('mpd_auth_user', JSON.stringify(user));
     setActivePage('home');
+    localStorage.setItem('mpd_active_page', 'home');
   };
 
   // Logout handler
@@ -486,8 +513,8 @@ export default function App() {
     return <LoginPage allUsers={allUsers} onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // If in Print Mode, render cleanly without sidebar and topbar
-  if (activePage === 'print-accounts') {
+  // If in Print Mode, render cleanly without sidebar and topbar (Teacher/Admin only)
+  if (activePage === 'print-accounts' && currentUser.role !== 'student') {
     return (
       <PrintAccountsView
         students={students}
@@ -497,7 +524,7 @@ export default function App() {
     );
   }
 
-  if (activePage === 'print-grades') {
+  if (activePage === 'print-grades' && currentUser.role !== 'student') {
     return (
       <PrintGradesView
         students={students}
@@ -562,7 +589,7 @@ export default function App() {
 
         {/* PAGE CONTENT CONTAINER */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
-          {activePage === 'classes-management' && (
+          {activePage === 'classes-management' && currentUser.role !== 'student' && (
             <KelolaKelasPage
               classes={classes}
               activeClass={activeClass}
@@ -575,7 +602,7 @@ export default function App() {
             />
           )}
 
-          {activePage === 'database-backup' && (
+          {activePage === 'database-backup' && currentUser.role !== 'student' && (
             <DatabaseExportPage
               students={students}
               progressList={progressList}
@@ -600,11 +627,12 @@ export default function App() {
             <MateriPage activeClass={activeClass} currentUser={currentUser} />
           )}
 
-          {activePage === 'resources' && <SumberBelajarPage />}
+          {activePage === 'resources' && <SumberBelajarPage currentUser={currentUser} />}
 
           {activePage === 'activities' && (
             <AktivitasPage
               currentUser={currentUser}
+              activeClass={activeClass}
               onUpdateLearningStyle={handleUpdateLearningStyle}
               onSubmitProductSuccess={() => {
                 handleNavigate('submissions');
@@ -629,7 +657,7 @@ export default function App() {
             <PerkembanganPage progressList={progressList} currentUser={currentUser} />
           )}
 
-          {activePage === 'students-management' && (
+          {activePage === 'students-management' && currentUser.role !== 'student' && (
             <ManajemenSiswaPage
               students={students}
               activeClass={activeClass}
@@ -646,11 +674,12 @@ export default function App() {
             />
           )}
 
-          {(activePage === 'kode' ||
-            activePage === 'kode-laravel' ||
-            activePage === 'kode-sql' ||
-            activePage === 'kode-firebase' ||
-            activePage === 'laravel-code') && (
+          {currentUser.role !== 'student' &&
+            (activePage === 'kode' ||
+              activePage === 'kode-laravel' ||
+              activePage === 'kode-sql' ||
+              activePage === 'kode-firebase' ||
+              activePage === 'laravel-code') && (
             <KodeHubPage
               initialTab={
                 activePage === 'kode-sql'

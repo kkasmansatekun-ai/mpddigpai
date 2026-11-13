@@ -23,83 +23,113 @@ import {
   Music,
   Film,
   File,
+  Loader2,
 } from 'lucide-react';
-import { getMaterialsFromFirestore } from '../../services/firebaseService';
+import {
+  loadAllMaterialsWithMedia,
+  getMaterialsFromLocalCache,
+} from '../../services/mediaStorageService';
+import { MediaDocumentViewer } from '../common/MediaDocumentViewer';
+import { SchoolClass } from '../../types';
+import { detectGradeLevel } from './MateriPage';
 
 interface AktivitasPageProps {
   currentUser: User;
+  activeClass?: SchoolClass;
   onUpdateLearningStyle: (style: LearningStyle) => void;
   onSubmitProductSuccess: (title: string, style: LearningStyle) => void;
 }
 
 export const AktivitasPage: React.FC<AktivitasPageProps> = ({
   currentUser,
+  activeClass,
   onUpdateLearningStyle,
   onSubmitProductSuccess,
 }) => {
+  const isStudent = currentUser.role === 'student';
+  const studentGrade = detectGradeLevel(
+    currentUser?.className || activeClass?.name,
+    activeClass?.phase
+  );
+
   const [selectedStyle, setSelectedStyle] = useState<LearningStyle>(
     currentUser.learningStyle || 'visual'
   );
   const [responseText, setResponseText] = useState<string>('');
   const [submittedMessage, setSubmittedMessage] = useState<string | null>(null);
 
-  // Load custom materials added by teacher
-  const [customMaterials, setCustomMaterials] = useState<MaterialItem[]>(() => {
-    const saved = localStorage.getItem('mpd_custom_materials');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [];
-  });
+  // Load custom materials added by teacher (with chunked video/PDF/Word hydration)
+  const [customMaterials, setCustomMaterials] = useState<MaterialItem[]>(() =>
+    getMaterialsFromLocalCache()
+  );
+  const [isLoadingMedia, setIsLoadingMedia] = useState<boolean>(true);
 
   useEffect(() => {
-    getMaterialsFromFirestore().then((cloudMats) => {
-      if (cloudMats && cloudMats.length > 0) {
-        setCustomMaterials((prev) => {
-          const map = new Map<string, MaterialItem>();
-          cloudMats.forEach((m: any) => map.set(m.id, m));
-          prev.forEach((m) => {
-            if (!map.has(m.id)) map.set(m.id, m);
-          });
-          const merged = Array.from(map.values());
-          localStorage.setItem('mpd_custom_materials', JSON.stringify(merged));
-          return merged;
-        });
-      }
-    });
+    let cancelled = false;
+    setIsLoadingMedia(true);
+    loadAllMaterialsWithMedia()
+      .then((hydrated) => {
+        if (!cancelled) {
+          setCustomMaterials(hydrated);
+          setIsLoadingMedia(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setIsLoadingMedia(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Filter materials based on selected learning style
-  const teacherMaterialsForSelectedStyle = customMaterials.filter((m) => {
+  // Filter materials by student grade level (if student)
+  const gradeFilteredMaterials = customMaterials.filter((m) => {
+    if (!m) return false;
+    if (!isStudent) return true;
+    const itemGrade = m.gradeLevel || 'X';
+    return itemGrade === 'all' || itemGrade === studentGrade;
+  });
+
+  const matchesStyle = (m: MaterialItem, style: LearningStyle) => {
     const cat =
       m.learningStyleCategory ||
       (m.contentData as any)?.learningStyleCategory ||
       (m.contentData as any)?.category;
 
-    if (selectedStyle === 'auditory') {
-      return cat === 'auditory' || cat === 'audio' || m.type === 'audio';
+    if (style === 'auditory') {
+      return cat === 'auditory' || cat === 'audio' || (!cat && m.type === 'audio');
     }
-    if (selectedStyle === 'visual') {
+    if (style === 'visual') {
       return (
         cat === 'visual' ||
-        m.type === 'gambar' ||
-        m.type === 'infografis' ||
-        m.type === 'presentasi'
+        (!cat &&
+          (m.type === 'video' ||
+            m.type === 'gambar' ||
+            m.type === 'infografis' ||
+            m.type === 'presentasi' ||
+            m.type === 'bacaan' ||
+            m.type === 'teks'))
       );
     }
-    if (selectedStyle === 'kinesthetic') {
+    if (style === 'kinesthetic') {
       return (
         cat === 'kinesthetic' ||
         cat === 'kinestetik' ||
-        m.type === 'kasus' ||
-        m.type === 'interaktif'
+        (!cat && (m.type === 'kasus' || m.type === 'interaktif'))
       );
     }
     return false;
-  });
+  };
+
+  // Filter materials based on selected learning style
+  const teacherMaterialsForSelectedStyle = gradeFilteredMaterials.filter((m) =>
+    matchesStyle(m, selectedStyle)
+  );
+  const visualCount = gradeFilteredMaterials.filter((m) => matchesStyle(m, 'visual')).length;
+  const auditoryCount = gradeFilteredMaterials.filter((m) => matchesStyle(m, 'auditory')).length;
+  const kinestheticCount = gradeFilteredMaterials.filter((m) =>
+    matchesStyle(m, 'kinesthetic')
+  ).length;
 
   const currentActivity =
     ACTIVITIES_DATA.find((a) => a.style === selectedStyle) || ACTIVITIES_DATA[0];
@@ -164,9 +194,16 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
             >
               <Eye className="w-5 h-5" />
             </div>
-            <div>
-              <p className="font-bold text-sm text-slate-900">Gaya VISUAL</p>
-              <p className="text-[11px] text-slate-500">Desain Infografis & Mind Map</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-bold text-sm text-slate-900">Gaya VISUAL</p>
+                {visualCount > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                    {visualCount}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">Video, PDF, Word & Infografis</p>
             </div>
           </button>
 
@@ -179,7 +216,7 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
             }`}
           >
             <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                 selectedStyle === 'auditory'
                   ? 'bg-blue-600 text-white'
                   : 'bg-slate-200 text-slate-600'
@@ -187,9 +224,16 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
             >
               <Headphones className="w-5 h-5" />
             </div>
-            <div>
-              <p className="font-bold text-sm text-slate-900">Gaya AUDITORI</p>
-              <p className="text-[11px] text-slate-500">Podcast & Narasi Lisan</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-bold text-sm text-slate-900">Gaya AUDITORI</p>
+                {auditoryCount > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                    {auditoryCount}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">Podcast, Audio & Kajian Suara</p>
             </div>
           </button>
 
@@ -202,7 +246,7 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
             }`}
           >
             <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                 selectedStyle === 'kinesthetic'
                   ? 'bg-amber-600 text-white'
                   : 'bg-slate-200 text-slate-600'
@@ -210,9 +254,16 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
             >
               <Footprints className="w-5 h-5" />
             </div>
-            <div>
-              <p className="font-bold text-sm text-slate-900">Gaya KINESTETIK</p>
-              <p className="text-[11px] text-slate-500">Uji Fakta & Simulasi Aksi</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-bold text-sm text-slate-900">Gaya KINESTETIK</p>
+                {kinestheticCount > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-600 text-white">
+                    {kinestheticCount}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">Lembar Aksi, Excel & Simulasi</p>
             </div>
           </button>
         </div>
@@ -260,17 +311,25 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
               </p>
             </div>
           </div>
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 ${
-              selectedStyle === 'auditory'
-                ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                : selectedStyle === 'visual'
-                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                : 'bg-amber-50 text-amber-800 border border-amber-200'
-            }`}
-          >
-            {teacherMaterialsForSelectedStyle.length} Materi Tersedia
-          </span>
+          <div className="flex items-center space-x-2 shrink-0">
+            {isLoadingMedia && (
+              <span className="inline-flex items-center space-x-1 text-[11px] text-slate-500 font-medium">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                <span>Sinkronisasi Media...</span>
+              </span>
+            )}
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 ${
+                selectedStyle === 'auditory'
+                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                  : selectedStyle === 'visual'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+              }`}
+            >
+              {teacherMaterialsForSelectedStyle.length} Materi Tersedia
+            </span>
+          </div>
         </div>
 
         {teacherMaterialsForSelectedStyle.length > 0 ? (
@@ -329,103 +388,13 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
                   </div>
                 )}
 
-                {/* Berkas Materi Multi-Format (Audio, Video, Gambar, Dokumen, Tabel) */}
-                {(m.contentData as any)?.fileAttachment && (
-                  <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
-                      <div className="flex items-center space-x-2.5">
-                        <span className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
-                          {(m.contentData as any).fileAttachment.extension}
-                        </span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-900">
-                            {(m.contentData as any).fileAttachment.name}
-                          </p>
-                          <p className="text-[10px] text-slate-500 font-medium">
-                            Berkas Penunjang Gaya Belajar • {(m.contentData as any).fileAttachment.size}
-                          </p>
-                        </div>
-                      </div>
-                      <a
-                        href={(m.contentData as any).fileAttachment.dataUrl}
-                        download={(m.contentData as any).fileAttachment.name}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center space-x-1.5 shadow-xs transition self-start sm:self-auto shrink-0"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Unduh Berkas</span>
-                      </a>
-                    </div>
-
-                    {/* AUDIO PLAYER: .mp3, .wav, .m4a, .ogg */}
-                    {['mp3', 'wav', 'm4a', 'ogg', 'aac'].includes(
-                      (m.contentData as any).fileAttachment.extension
-                    ) && (
-                      <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-1.5">
-                        <span className="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
-                          <Volume2 className="w-4 h-4 text-blue-700" />
-                          <span>Pemutar Audio Kajian / Podcast (Gaya Auditori):</span>
-                        </span>
-                        <audio
-                          controls
-                          className="w-full h-10 rounded-lg outline-hidden"
-                          src={(m.contentData as any).fileAttachment.dataUrl}
-                        />
-                      </div>
-                    )}
-
-                    {/* VIDEO PLAYER: .mp4, .webm, .mov */}
-                    {['mp4', 'webm', 'mov'].includes(
-                      (m.contentData as any).fileAttachment.extension
-                    ) && (
-                      <div className="rounded-xl overflow-hidden border border-slate-300 bg-black">
-                        <video
-                          controls
-                          className="w-full max-h-72 object-contain mx-auto"
-                          src={(m.contentData as any).fileAttachment.dataUrl}
-                        />
-                      </div>
-                    )}
-
-                    {/* IMAGE PREVIEW: .jpg, .png, .webp, .gif */}
-                    {['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(
-                      (m.contentData as any).fileAttachment.extension
-                    ) && (
-                      <div className="rounded-xl overflow-hidden border border-slate-200 bg-white p-2 text-center">
-                        <img
-                          src={(m.contentData as any).fileAttachment.dataUrl}
-                          alt={(m.contentData as any).fileAttachment.name}
-                          className="max-h-72 w-auto max-w-full object-contain mx-auto rounded-lg"
-                        />
-                      </div>
-                    )}
-
-                    {/* DOKUMEN / SPREADSHEET / CSV: .pdf, .xlsx, .csv, .docx */}
-                    {['pdf', 'xlsx', 'xls', 'csv', 'docx', 'pptx'].includes(
-                      (m.contentData as any).fileAttachment.extension
-                    ) && (
-                      <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
-                        <span className="text-emerald-950 font-semibold flex items-center space-x-1.5">
-                          {['xlsx', 'xls', 'csv'].includes(
-                            (m.contentData as any).fileAttachment.extension
-                          ) ? (
-                            <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-                          ) : (
-                            <FileText className="w-4 h-4 text-emerald-700" />
-                          )}
-                          <span>
-                            Berkas Penunjang ({((m.contentData as any).fileAttachment.extension).toUpperCase()}): Siap dipelajari untuk aktivitas diferensiasi
-                          </span>
-                        </span>
-                        <a
-                          href={(m.contentData as any).fileAttachment.dataUrl}
-                          download={(m.contentData as any).fileAttachment.name}
-                          className="text-emerald-700 hover:text-emerald-800 font-bold underline ml-2"
-                        >
-                          Buka / Simpan
-                        </a>
-                      </div>
-                    )}
-                  </div>
+                {/* PENAMPIL MEDIA & DOKUMEN INTERAKTIF (Video Player, MS Word Reader, PDF Viewer, Audio, Tabel) */}
+                {((m.contentData as any)?.fileAttachment || (m.contentData as any)?.mediaUrl) && (
+                  <MediaDocumentViewer
+                    title={m.title}
+                    fileAttachment={(m.contentData as any)?.fileAttachment}
+                    mediaUrl={(m.contentData as any)?.mediaUrl}
+                  />
                 )}
               </div>
             ))}
