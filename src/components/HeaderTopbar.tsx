@@ -7,6 +7,7 @@ interface HeaderTopbarProps {
   allUsers: User[];
   activeClass: SchoolClass;
   allClasses: SchoolClass[];
+  selectedTopic?: string | null;
   onSelectClass: (c: SchoolClass) => void;
   onSelectUser: (user: User) => void;
   onOpenLaravelCode: () => void;
@@ -21,6 +22,7 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
   allUsers,
   activeClass,
   allClasses,
+  selectedTopic,
   onSelectClass,
   onSelectUser,
   onOpenLaravelCode,
@@ -137,9 +139,11 @@ export const HeaderTopbar: React.FC<HeaderTopbarProps> = ({
               </div>
             )}
 
-            <span className="text-xs text-slate-500 hidden md:inline font-medium">
-              Topik: <strong className="text-slate-800">Adab Bersosial Media dalam Islam</strong>
-            </span>
+            {selectedTopic && (
+              <span className="text-xs text-slate-500 hidden md:inline font-medium">
+                Topik: <strong className="text-slate-800">{selectedTopic}</strong>
+              </span>
+            )}
           </div>
         </div>
 

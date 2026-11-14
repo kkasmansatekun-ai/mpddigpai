@@ -37,6 +37,7 @@ interface AktivitasPageProps {
   currentUser: User;
   activeClass?: SchoolClass;
   onUpdateLearningStyle: (style: LearningStyle) => void;
+  onSelectTopic?: (topicTitle: string) => void;
   onSubmitProductSuccess: (title: string, style: LearningStyle) => void;
 }
 
@@ -44,6 +45,7 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
   currentUser,
   activeClass,
   onUpdateLearningStyle,
+  onSelectTopic,
   onSubmitProductSuccess,
 }) => {
   const isStudent = currentUser.role === 'student';
@@ -91,32 +93,33 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
   });
 
   const matchesStyle = (m: MaterialItem, style: LearningStyle) => {
-    const cat =
+    const rawCat =
       m.learningStyleCategory ||
       (m.contentData as any)?.learningStyleCategory ||
-      (m.contentData as any)?.category;
+      (m.contentData as any)?.category ||
+      (m.contentData as any)?.categoryName;
+    const cat = typeof rawCat === 'string' ? rawCat.toLowerCase().trim() : '';
 
-    if (style === 'auditory') {
-      return cat === 'auditory' || cat === 'audio' || (!cat && m.type === 'audio');
+    if (cat) {
+      if (style === 'auditory') return cat === 'auditory' || cat === 'audio' || cat === 'auditori';
+      if (style === 'visual') return cat === 'visual';
+      if (style === 'kinesthetic') return cat === 'kinesthetic' || cat === 'kinestetik';
+      return false;
     }
+
+    if (style === 'auditory') return m.type === 'audio';
     if (style === 'visual') {
       return (
-        cat === 'visual' ||
-        (!cat &&
-          (m.type === 'video' ||
-            m.type === 'gambar' ||
-            m.type === 'infografis' ||
-            m.type === 'presentasi' ||
-            m.type === 'bacaan' ||
-            m.type === 'teks'))
+        m.type === 'video' ||
+        m.type === 'gambar' ||
+        m.type === 'infografis' ||
+        m.type === 'presentasi' ||
+        m.type === 'bacaan' ||
+        m.type === 'teks'
       );
     }
     if (style === 'kinesthetic') {
-      return (
-        cat === 'kinesthetic' ||
-        cat === 'kinestetik' ||
-        (!cat && (m.type === 'kasus' || m.type === 'interaktif'))
-      );
+      return m.type === 'kasus' || m.type === 'interaktif';
     }
     return false;
   };
@@ -337,7 +340,8 @@ export const AktivitasPage: React.FC<AktivitasPageProps> = ({
             {teacherMaterialsForSelectedStyle.map((m) => (
               <div
                 key={m.id}
-                className={`p-5 rounded-2xl border transition space-y-3 ${
+                onClick={() => onSelectTopic?.(m.title)}
+                className={`p-5 rounded-2xl border transition space-y-3 cursor-pointer ${
                   selectedStyle === 'auditory'
                     ? 'bg-blue-50/50 border-blue-200 hover:border-blue-400'
                     : selectedStyle === 'visual'

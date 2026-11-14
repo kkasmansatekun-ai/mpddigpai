@@ -19,9 +19,10 @@ interface HomePageProps {
   onNavigate: (page: PageId) => void;
   currentUser: User;
   activeClass?: SchoolClass;
+  selectedTopic?: string | null;
 }
 
-export const HomePage: React.FC<HomePageProps> = ({ onNavigate, currentUser, activeClass }) => {
+export const HomePage: React.FC<HomePageProps> = ({ onNavigate, currentUser, activeClass, selectedTopic }) => {
   const conceptualFlow = [
     { step: 1, title: 'Analisis Kebutuhan', desc: 'Pemetaan profil, gaya belajar & pemahaman awal peserta didik' },
     { step: 2, title: 'MPD-DigPAI', desc: 'Akses 9 multi-representasi materi digital & dalil syariat' },
@@ -42,24 +43,29 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, currentUser, act
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight">
-            MPD-DigPAI: <br className="hidden sm:inline" />
-            <span className="text-emerald-300">Adab Bersosial Media</span> dalam Islam
+            Selamat Datang di <span className="text-emerald-300">MPD-DigPAI</span>
           </h1>
 
-          <p className="text-emerald-100/90 text-sm sm:text-base leading-relaxed">
-            Studi Etika Komunikasi Digital, Prinsip Tabayyun, Menjaga Lisan Digital, serta Penanganan Hoaks & Cyberbullying berlandaskan Al-Qur’an, Hadis, dan Fatwa MUI No. 24/2017.
+          <p className="text-emerald-200 font-bold text-base sm:text-lg leading-snug">
+            Pembelajaran Pendidikan Agama Islam yang Diferensiatif dan Berbasis Media Digital
           </p>
 
-          {/* Pengampu & Detail Materi */}
+          <p className="text-emerald-100/90 text-sm sm:text-base leading-relaxed">
+            Belajar, bereksplorasi, berkolaborasi dan mengembangkan potensi melalui pengalaman belajar yang beragam
+          </p>
+
+          {/* Pengampu & Profil */}
           <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-emerald-200">
             <div className="flex items-center space-x-2 bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-700/40">
               <span className="font-semibold text-white">Guru Pengampu:</span>
               <span>Wandra Arasdi, M.Pd.</span>
             </div>
-            <div className="flex items-center space-x-2 bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-700/40">
-              <span className="font-semibold text-white">Topik Aktif:</span>
-              <span className="font-bold text-emerald-300">Adab Bersosial Media</span>
-            </div>
+            {selectedTopic && (
+              <div className="flex items-center space-x-2 bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-700/40">
+                <span className="font-semibold text-white">Topik Aktif:</span>
+                <span className="font-bold text-emerald-300">{selectedTopic}</span>
+              </div>
+            )}
             <div className="flex items-center space-x-2 bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-700/40">
               <span className="font-semibold text-white">Profil Anda:</span>
               <span className="capitalize">{currentUser.name} ({currentUser.role === 'teacher' ? 'Guru' : currentUser.learningStyle})</span>

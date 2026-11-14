@@ -52,6 +52,7 @@ import { MediaDocumentViewer } from '../common/MediaDocumentViewer';
 interface MateriPageProps {
   activeClass?: SchoolClass;
   currentUser?: User;
+  onSelectTopic?: (topicTitle: string) => void;
 }
 
 export function detectGradeLevel(className?: string, phase?: string): 'X' | 'XI' | 'XII' {
@@ -61,7 +62,7 @@ export function detectGradeLevel(className?: string, phase?: string): 'X' | 'XI'
   return 'X';
 }
 
-export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser }) => {
+export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser, onSelectTopic }) => {
   const isStudent = currentUser?.role === 'student';
   const studentGrade = detectGradeLevel(currentUser?.className || activeClass?.name, activeClass?.phase);
   const activeClassGrade = detectGradeLevel(activeClass?.name, activeClass?.phase);
@@ -96,6 +97,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
   const [newSubtitle, setNewSubtitle] = useState('');
   const [newType, setNewType] = useState('teks');
   const [newCategory, setNewCategory] = useState<'visual' | 'auditory' | 'kinesthetic'>('visual');
+  const [hasManuallySelectedCategory, setHasManuallySelectedCategory] = useState(false);
   const [newSummary, setNewSummary] = useState('');
   const [newContentText, setNewContentText] = useState('');
   const [newMediaUrl, setNewMediaUrl] = useState('');
@@ -138,22 +140,23 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     const sizeKb = Math.round(file.size / 1024);
     const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
 
-    // Otomatis sinkronkan format dan kategori berdasarkan jenis berkas
+    // Otomatis sinkronkan format media berdasarkan jenis berkas.
+    // Jangan menimpa kategori gaya belajar jika guru sudah memilihnya (misalnya Kinestetik).
     if (['mp3', 'wav', 'm4a', 'ogg', 'aac'].includes(ext)) {
-      setNewCategory('auditory');
       setNewType('audio');
+      if (!hasManuallySelectedCategory) setNewCategory('auditory');
     } else if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext)) {
-      setNewCategory('visual');
       setNewType('gambar');
+      if (!hasManuallySelectedCategory) setNewCategory('visual');
     } else if (['pdf', 'doc', 'docx'].includes(ext)) {
-      setNewCategory('visual');
       setNewType('bacaan');
+      if (!hasManuallySelectedCategory) setNewCategory('visual');
     } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
-      setNewCategory('kinesthetic');
       setNewType('kasus');
+      if (!hasManuallySelectedCategory) setNewCategory('kinesthetic');
     } else if (['mp4', 'webm', 'mov', 'mkv', 'm4v'].includes(ext)) {
-      setNewCategory('visual');
       setNewType('video');
+      if (!hasManuallySelectedCategory) setNewCategory('visual');
     }
 
     setIsReadingFile(true);
@@ -274,6 +277,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     setNewSubtitle('');
     setNewType('teks');
     setNewCategory('visual');
+    setHasManuallySelectedCategory(false);
     setNewSummary('');
     setNewContentText('');
     setNewMediaUrl('');
@@ -299,6 +303,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
     setNewCategory(
       cat === 'auditory' || cat === 'kinesthetic' || cat === 'visual' ? cat : 'visual'
     );
+    setHasManuallySelectedCategory(true);
     setNewSummary(mat.summary || '');
     setNewContentText((mat.contentData as any)?.text || '');
     setNewMediaUrl((mat.contentData as any)?.mediaUrl || '');
@@ -563,7 +568,10 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
               return (
                 <button
                   key={mat.id}
-                  onClick={() => setActiveTab(mat.id)}
+                  onClick={() => {
+                    setActiveTab(mat.id);
+                    onSelectTopic?.(mat.title);
+                  }}
                   className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
                     isActive
                       ? isCustom
@@ -1308,6 +1316,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                   {/* OPSI *. Audio */}
                   <div
                     onClick={() => {
+                      setHasManuallySelectedCategory(true);
                       setNewCategory('auditory');
                       if (newType === 'teks') setNewType('audio');
                     }}
@@ -1349,6 +1358,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                   {/* OPSI *. Visual */}
                   <div
                     onClick={() => {
+                      setHasManuallySelectedCategory(true);
                       setNewCategory('visual');
                       if (newType === 'audio') setNewType('teks');
                     }}
@@ -1390,6 +1400,7 @@ export const MateriPage: React.FC<MateriPageProps> = ({ activeClass, currentUser
                   {/* OPSI *. Kinestetik */}
                   <div
                     onClick={() => {
+                      setHasManuallySelectedCategory(true);
                       setNewCategory('kinesthetic');
                     }}
                     className={`p-3 rounded-2xl border-2 cursor-pointer transition flex flex-col justify-between space-y-2 ${

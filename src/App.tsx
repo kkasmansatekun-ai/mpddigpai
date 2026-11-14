@@ -111,6 +111,8 @@ export default function App() {
     return 'home';
   });
 
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+
   const ADMIN_ONLY_PAGES: PageId[] = [
     'classes-management',
     'students-management',
@@ -267,12 +269,14 @@ export default function App() {
       }
     }
     setActivePage('home');
+    setSelectedTopic(null);
     localStorage.setItem('mpd_active_page', 'home');
   };
 
   // Logout handler
   const handleLogout = () => {
     localStorage.removeItem('mpd_auth_user');
+    setSelectedTopic(null);
     setIsAuthenticated(false);
   };
 
@@ -594,6 +598,7 @@ export default function App() {
           allUsers={allUsers}
           activeClass={activeClass}
           allClasses={classes}
+          selectedTopic={activePage === 'home' ? null : selectedTopic}
           onSelectClass={handleSelectClass}
           onSelectUser={(u) => setCurrentUser(u)}
           onOpenLaravelCode={() => handleNavigate('kode-laravel')}
@@ -632,6 +637,7 @@ export default function App() {
               onNavigate={(p) => handleNavigate(p)}
               currentUser={currentUser}
               activeClass={activeClass}
+              selectedTopic={null}
             />
           )}
 
@@ -640,7 +646,11 @@ export default function App() {
           {activePage === 'objectives' && <TujuanPage />}
 
           {activePage === 'materials' && (
-            <MateriPage activeClass={activeClass} currentUser={currentUser} />
+            <MateriPage
+              activeClass={activeClass}
+              currentUser={currentUser}
+              onSelectTopic={(title) => setSelectedTopic(title)}
+            />
           )}
 
           {activePage === 'resources' && <SumberBelajarPage currentUser={currentUser} />}
@@ -650,6 +660,7 @@ export default function App() {
               currentUser={currentUser}
               activeClass={activeClass}
               onUpdateLearningStyle={handleUpdateLearningStyle}
+              onSelectTopic={(title) => setSelectedTopic(title)}
               onSubmitProductSuccess={() => {
                 handleNavigate('submissions');
               }}
